@@ -1,0 +1,21 @@
+{
+  "name": "bunradio",
+  "module": "index-tcp.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch index-rtmp.ts",
+    "start": "bun run index-rtmp.ts",
+    "mcp": "bun run mcp-server.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "mcp-lite": "^0.10.0",
+    "zod": "^4.4.3"
+  }
+}

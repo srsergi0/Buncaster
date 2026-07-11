@@ -1,0 +1,43 @@
+import { state } from "./state";
+import { preBuffer } from "./pre-buffer";
+import { httpLog } from "./logger";
+
+const MAX_SLOW_STRIKES = 5;
+
+export function evictClient(id: string, reason: string): void {
+  const client = state.clients.get(id);
+  if (!client) return;
+  try {
+    client.controller.close();
+  } catch {
+    /* noop */
+  }
+  state.clients.delete(id);
+  httpLog.info(`Oyente ${id} desconectado (${reason}). Activos: ${state.clients.size}`);
+}
+
+export function broadcast(chunk: Uint8Array): void {
+  preBuffer.push(chunk);
+
+  for (const [id, client] of state.clients) {
+    try {
+      client.controller.enqueue(chunk);
+    } catch (err) {
+      evictClient(id, `fallo al enviar datos: ${(err as Error).message}`);
+      continue;
+    }
+
+    client.bytesSent += chunk.byteLength;
+    state.totalBytesSent += chunk.byteLength;
+
+    const desiredSize = client.controller.desiredSize;
+    if (desiredSize !== null && desiredSize < 0) {
+      client.slowStrikes++;
+      if (client.slowStrikes >= MAX_SLOW_STRIKES) {
+        evictClient(id, "no puede seguir el ritmo del stream (buffer saturado)");
+      }
+    } else {
+      client.slowStrikes = 0;
+    }
+  }
+}
