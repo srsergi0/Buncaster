@@ -55,24 +55,60 @@ Main variables in `.env`:
     bun run start
     ```
 
-### 4. Running with Docker Compose (Alternative - Recommended for Deployment)
-If you prefer running the station inside a container, a highly optimized **Docker Compose** setup is provided. It automatically configures `Bun` and installs `FFmpeg` on a lightweight Alpine image.
+### 4. Running with Docker (Alternative - Recommended for Deployment)
+If you prefer running the station inside a container, you can choose between pulling the pre-built image or building it locally.
 
-1.  Make sure you have your `.env` file configured.
-2.  Run the following command to build and launch the container in the background:
-    ```bash
-    docker compose up -d --build
-    ```
-3.  To see the logs:
-    ```bash
-    docker compose logs -f
-    ```
-4.  To stop the server:
-    ```bash
-    docker compose down
-    ```
+#### Option A: Pull pre-built image from GHCR (Fastest, no compilation needed)
+You don't need any source files on your server. Just create a `docker-compose.yml` file and a `.env` configuration file on your target machine:
 
-The container automatically mounts your music folder and opens the HTTP/RTMP ports defined in `.env`.
+```yaml
+services:
+  bunradio:
+    image: ghcr.io/srsergi0/buncaster:latest
+    container_name: bunradio
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4321}:${PORT:-4321}"
+      - "${RTMP_PORT:-1935}:${RTMP_PORT:-1935}"
+    env_file:
+      - .env
+    volumes:
+      - ./${FALLBACK_SOURCE:-musica}:/app/${FALLBACK_SOURCE:-musica}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+Then start the server with:
+```bash
+docker compose up -d
+```
+
+#### Option B: Build and run locally with Docker Compose
+If you have the source files locally and want to build the container from scratch:
+1. Make sure you have your `.env` file configured.
+2. Run:
+   ```bash
+   docker compose up -d --build
+   ```
+
+To check logs or stop the server:
+```bash
+# View live logs
+docker compose logs -f
+
+# Stop container
+docker compose down
+```
+
+---
+
+### 5. Running Natively on Windows (Absolute Peak Performance & Low Footprint)
+For Windows users wanting the absolute lowest resource usage (~30-50MB RAM and 0% idle CPU compared to ~1.5GB RAM with Docker WSL2), you can run natively:
+1. Double-click the **[start-radio.bat](file:///d:/cursos/bunradio/start-radio.bat)** file.
+2. The script will automatically verify your environment (checks Bun & FFmpeg), install dependencies if missing, and launch the server.
 
 ---
 
