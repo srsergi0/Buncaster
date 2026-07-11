@@ -1,12 +1,12 @@
 {
   "name": "bunradio",
-  "module": "index-tcp.ts",
+  "module": "src/index-rtmp.ts",
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run --watch index-rtmp.ts",
-    "start": "bun run index-rtmp.ts",
-    "mcp": "bun run mcp-server.ts"
+    "dev": "bun run --watch src/index-rtmp.ts",
+    "start": "bun run src/index-rtmp.ts",
+    "mcp": "bun run src/mcp-server.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

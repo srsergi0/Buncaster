@@ -96,6 +96,60 @@ All admin endpoints require basic authentication (`ADMIN_USER` and `ADMIN_PASSWO
 
 ---
 
+## Model Context Protocol (MCP) Integration
+
+The server includes an integrated MCP (Model Context Protocol) layer built using the ultra-lightweight `mcp-lite` package. This allows LLM agents and IDE assistants (like Cursor, Windsurf, or Claude Desktop) to directly inspect and control your radio station using structured tools.
+
+### Available Tools
+The MCP server registers the following tools:
+*   `get_status`: Returns current radio status, broadcasting state, listener count, and current track metadata.
+*   `get_queue`: Retrieves the priority wait queue.
+*   `push_to_queue` (arguments: `file`): Adds a local audio file or stream URL to the queue.
+*   `remove_from_queue` (arguments: `index`): Removes an item from the queue by index.
+*   `clear_queue`: Clears all items from the playback queue.
+*   `move_in_queue` (arguments: `from`, `to`): Reorders items in the queue.
+*   `skip_track`: Skips the current fallback track.
+*   `shuffle_playlist`: Shuffles the fallback music directory.
+*   `list_files`: Lists all supported audio files in your music directory.
+*   `toggle_fallback`: Pauses or resumes the fallback music playback.
+
+### Connection Modes
+
+#### 1. HTTP/SSE Transport (Automatic with `bun run dev`)
+When the radio server starts via `bun run dev`, the MCP server is automatically hosted inline at:
+```http
+http://localhost:4321/mcp
+```
+To connect Claude Desktop via SSE, add the following to your `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "bunradio": {
+      "url": "http://localhost:4321/mcp"
+    }
+  }
+}
+```
+
+#### 2. Stdio Subprocess Transport (Alternative)
+You can also launch the MCP server as a standalone stdio process that communicates with the active HTTP server:
+```json
+{
+  "mcpServers": {
+    "bunradio": {
+      "command": "bun",
+      "args": ["run", "src/mcp-server.ts"],
+      "env": {
+        "BUNRADIO_API_URL": "http://localhost:4321"
+      }
+    }
+  }
+}
+```
+
+---
+
 ## License
 
 This project is licensed under the [MIT](LICENSE) license.
+
