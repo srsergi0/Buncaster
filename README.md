@@ -55,6 +55,25 @@ Main variables in `.env`:
     bun run start
     ```
 
+### 4. Running with Docker Compose (Alternative - Recommended for Deployment)
+If you prefer running the station inside a container, a highly optimized **Docker Compose** setup is provided. It automatically configures `Bun` and installs `FFmpeg` on a lightweight Alpine image.
+
+1.  Make sure you have your `.env` file configured.
+2.  Run the following command to build and launch the container in the background:
+    ```bash
+    docker compose up -d --build
+    ```
+3.  To see the logs:
+    ```bash
+    docker compose logs -f
+    ```
+4.  To stop the server:
+    ```bash
+    docker compose down
+    ```
+
+The container automatically mounts your music folder and opens the HTTP/RTMP ports defined in `.env`.
+
 ---
 
 ## OBS Studio Configuration

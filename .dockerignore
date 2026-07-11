@@ -1,0 +1,21 @@
+# Ignorar dependencias locales
+node_modules/
+
+# Ignorar control de versiones e IDEs
+.git/
+.gitignore
+.idea/
+.vscode/
+
+# Ignorar configuración local sensible y documentación
+.env
+README.md
+Dockerfile
+docker-compose.yml
+.agents/
+
+# Ignorar logs y temporales
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
