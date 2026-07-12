@@ -35,7 +35,7 @@ const API_URL = process.env.BUNRADIO_API_URL || `http://localhost:${PORT}`;
 /**
  * Helper function to call the BunRadio HTTP REST API.
  */
-async function callApi(endpoint: string, method: "GET" | "POST" = "GET", body?: any) {
+async function callApi(endpoint: string, method: "GET" | "POST" = "GET", body?: any): Promise<any> {
   const headers: Record<string, string> = {};
 
   if (ADMIN_USER || ADMIN_PASSWORD) {

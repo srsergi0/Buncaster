@@ -214,16 +214,32 @@ async function getFileMetadata(file: string) {
   }
 }
 
+function getAudioFilesRecursive(dir: string): string[] {
+  let results: string[] = [];
+  try {
+    const list = fs.readdirSync(dir);
+    for (const file of list) {
+      const filePath = `${dir}/${file}`;
+      const stat = fs.statSync(filePath);
+      if (stat && stat.isDirectory()) {
+        results = results.concat(getAudioFilesRecursive(filePath));
+      } else if (/\.(mp3|flac|wav|m4a|aac|ogg)$/i.test(file)) {
+        results.push(filePath);
+      }
+    }
+  } catch (err) {
+    // Si hay un error leyendo una subcarpeta (por ejemplo, permisos), lo ignoramos para continuar con el resto
+  }
+  return results;
+}
+
 function initializeFallbackSource() {
   if (!config.fallbackSource) return;
 
   try {
     const stat = fs.statSync(config.fallbackSource);
     if (stat.isDirectory()) {
-      const files = fs.readdirSync(config.fallbackSource);
-      const audioFiles = files
-        .filter((f) => /\.(mp3|flac|wav|m4a|aac|ogg)$/i.test(f))
-        .map((f) => `${config.fallbackSource}/${f}`);
+      const audioFiles = getAudioFilesRecursive(config.fallbackSource);
 
       if (audioFiles.length === 0) {
         rtmpLog.warn(`La carpeta de fallback "${config.fallbackSource}" no contiene archivos de audio válidos.`);
@@ -235,7 +251,7 @@ function initializeFallbackSource() {
       shuffle(fallbackPlaylist);
       currentPlaylistIndex = 0;
       isPlaylistInitialized = true;
-      rtmpLog.info(`Inicializada carpeta de fallback con ${audioFiles.length} canciones mezcladas aleatoriamente.`);
+      rtmpLog.info(`Inicializada carpeta de fallback con ${audioFiles.length} canciones recursivamente y mezcladas aleatoriamente.`);
     } else {
       fallbackPlaylist = [config.fallbackSource];
       currentPlaylistIndex = 0;
@@ -280,7 +296,7 @@ export function startMasterEncoder() {
     const reader = state.masterProcess.stdout.getReader();
     
     const processInstance = state.masterProcess;
-    processInstance.exited.then((exitCode) => {
+    processInstance.exited.then((exitCode: number) => {
       if (state.masterProcess === processInstance) {
         rtmpLog.warn(`[Master Encoder] El proceso del Codificador Maestro terminó (exitCode: ${exitCode}). Limpiando.`);
         try {
@@ -418,7 +434,7 @@ export function startFallback() {
 async function pipeFallback(deck: Deck, reader: ReadableStreamDefaultReader<Uint8Array>) {
   const processInstance = deck.process;
   if (processInstance) {
-    processInstance.exited.then((exitCode) => {
+    processInstance.exited.then((exitCode: number) => {
       if (deck.process === processInstance && !transitionStarted) {
         rtmpLog.info(`[Deck ${deck.id}] El proceso terminó (exitCode: ${exitCode}). Cancelando lector.`);
         try {
@@ -591,7 +607,7 @@ export async function runRtmpListener() {
       const reader = state.sourceProcess.stdout.getReader();
 
       const processInstance = state.sourceProcess;
-      processInstance.exited.then((exitCode) => {
+      processInstance.exited.then((exitCode: number) => {
         if (state.sourceProcess === processInstance) {
           rtmpLog.info(`[RTMP Listener] El proceso de receptor RTMP terminó (exitCode: ${exitCode}). Cancelando lector.`);
           try {
