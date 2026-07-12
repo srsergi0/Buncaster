@@ -14,6 +14,7 @@ export interface Config {
   audioProcessing: boolean;
   crossfadeSeconds: number;
   rtmpStreamKey: string;
+  rtmpMinLiveSeconds: number;
 }
 
 function envInt(name: string): number {
@@ -62,6 +63,7 @@ function loadConfig(): Config {
     audioProcessing: envBool("AUDIO_PROCESSING"),
     crossfadeSeconds: envInt("CROSSFADE_SECONDS"),
     rtmpStreamKey: process.env.RTMP_STREAM_KEY || "stream",
+    rtmpMinLiveSeconds: envInt("RTMP_MIN_LIVE_SECONDS"),
   };
 
   if (cfg.httpPort === cfg.rtmpPort) {

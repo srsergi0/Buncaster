@@ -590,8 +590,23 @@ export function actionSkipFallback() {
 export async function runRtmpListener() {
   startMasterEncoder();
 
+  // Detección de flaps: si RTMP se desconecta muchas veces en poco tiempo,
+  // se ignora la fuente durante un periodo de enfriamiento para no romper
+  // el audio de respaldo con idas y venidas continuas.
+  const flapWindowMs = 30000;
+  const flapMaxCount = 3;
+  const flapCooldownMs = 60000;
+  let disconnectTimestamps: number[] = [];
+  let rtmpCooldownUntil = 0;
+
   while (true) {
     if (state.shuttingDown) break;
+
+    if (Date.now() < rtmpCooldownUntil) {
+      rtmpLog.warn(`[RTMP] En enfriamiento por flaps. Ignorando conexiones hasta ${new Date(rtmpCooldownUntil).toISOString()}`);
+      await new Promise((r) => setTimeout(r, 2000));
+      continue;
+    }
 
     rtmpLog.info(`Esperando conexión RTMP de OBS en rtmp://0.0.0.0:${config.rtmpPort}/live/${config.rtmpStreamKey}`);
 
@@ -628,40 +643,53 @@ export async function runRtmpListener() {
         }
       }).catch(() => {});
 
+      // No pasar a "vivo" hasta recibir audio de forma sostenida. Esto filtra
+      // conexiones breves/sondas que provocan cortes en el respaldo.
+      let firstAudioAt = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        if (!state.isBroadcasting && value.byteLength > 0) {
-          state.isBroadcasting = true;
-          liveTransitionStartTime = Date.now();
-          isLiveTransitionActive = config.crossfadeSeconds > 0;
-          
-          rtmpLog.info("¡Conexión RTMP establecida y transmitiendo audio en VIVO!");
-          
-          state.currentTrack = null;
-          broadcastSse("track-changed", null);
-          broadcastSse("state-updated", { broadcasting: true, sourceConnected: true });
-        }
+        if (value.byteLength > 0) {
+          state.totalBytesReceived += value.byteLength;
+          if (firstAudioAt === 0) firstAudioAt = Date.now();
+          const sustained = (Date.now() - firstAudioAt) >= config.rtmpMinLiveSeconds * 1000;
 
-        if (isLiveTransitionActive) {
-          // Fundido cruzado de entrada (Música de fondo -> En Vivo)
-          const elapsed = Date.now() - liveTransitionStartTime;
-          const progress = Math.min(1.0, elapsed / (config.crossfadeSeconds * 1000));
+          if (!state.isBroadcasting && sustained) {
+            state.isBroadcasting = true;
+            liveTransitionStartTime = Date.now();
+            isLiveTransitionActive = config.crossfadeSeconds > 0;
 
-          const currentMusicDeck = activeDeck === "A" ? deckA : deckB;
-          const fallbackChunk = currentMusicDeck.buffer.pull(value.length);
+            rtmpLog.info(`¡Conexión RTMP establecida y transmitiendo audio en VIVO! (tras ${config.rtmpMinLiveSeconds}s de audio sostenido)`);
 
-          const mixed = mixSamples(value, progress, fallbackChunk, 1.0 - progress);
-          writeToMaster(mixed);
-
-          if (progress >= 1.0) {
-            isLiveTransitionActive = false;
-            stopFallback(); // Apagar procesos físicos de fallback de fondo
+            state.currentTrack = null;
+            broadcastSse("track-changed", null);
+            broadcastSse("state-updated", { broadcasting: true, sourceConnected: true });
           }
         } else {
-          // Emisión directa
-          writeToMaster(value);
+          firstAudioAt = 0; // Reiniciar conteo si hay un vacío de audio
+        }
+
+        if (state.isBroadcasting) {
+          if (isLiveTransitionActive) {
+            // Fundido cruzado de entrada (Música de fondo -> En Vivo)
+            const elapsed = Date.now() - liveTransitionStartTime;
+            const progress = Math.min(1.0, elapsed / (config.crossfadeSeconds * 1000));
+
+            const currentMusicDeck = activeDeck === "A" ? deckA : deckB;
+            const fallbackChunk = currentMusicDeck.buffer.pull(value.length);
+
+            const mixed = mixSamples(value, progress, fallbackChunk, 1.0 - progress);
+            writeToMaster(mixed);
+
+            if (progress >= 1.0) {
+              isLiveTransitionActive = false;
+              stopFallback(); // Apagar procesos físicos de fallback de fondo
+            }
+          } else {
+            // Emisión directa
+            writeToMaster(value);
+          }
         }
       }
     } catch (err) {
@@ -684,6 +712,16 @@ export async function runRtmpListener() {
       }
 
       broadcastSse("state-updated", { broadcasting: false, sourceConnected: false });
+
+      // Detección de flaps
+      const now = Date.now();
+      disconnectTimestamps = disconnectTimestamps.filter((t) => now - t < flapWindowMs);
+      disconnectTimestamps.push(now);
+      if (disconnectTimestamps.length > flapMaxCount) {
+        rtmpCooldownUntil = now + flapCooldownMs;
+        rtmpLog.warn(`[RTMP] Demasiadas desconexiones rápidas (${disconnectTimestamps.length} en ${flapWindowMs / 1000}s). Entrando en enfriamiento ${flapCooldownMs / 1000}s.`);
+        disconnectTimestamps = [];
+      }
 
       if (!state.shuttingDown) {
         stopFallback();
