@@ -531,11 +531,21 @@ async function pipeFallback(deck: Deck, reader: ReadableStreamDefaultReader<Uint
     deck.currentTrackFile = null;
     deck.buffer.clear();
 
-    // Si terminó abruptamente sin activar el crossfade (ej. tema corto) y no fue detenido intencionalmente
     if (!state.isBroadcasting && !state.shuttingDown && !wasIntentionallyStopped) {
       if (activeDeck === deck.id && !transitionStarted) {
+        // Caso normal: deck terminó sin crossfade activo
         activeDeck = activeDeck === "A" ? "B" : "A";
         startFallback();
+      } else if (activeDeck === deck.id && transitionStarted) {
+        // FIX: Deck terminó durante un crossfade — completar la transición
+        rtmpLog.info(`[Deck ${deck.id}] Proceso terminó durante crossfade. Completando transición.`);
+        transitionStarted = false;
+        activeDeck = deck.id === "A" ? "B" : "A";
+        const newDeck = activeDeck === "A" ? deckA : deckB;
+        newDeck.buffer.clear();
+        if (!newDeck.process) {
+          startFallback();
+        }
       }
     }
   }
