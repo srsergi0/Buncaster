@@ -77,11 +77,6 @@ export const deckB: Deck = {
   currentTrackFile: null,
 };
 
-const liveDeck = {
-  buffer: new AudioStreamBuffer(),
-  process: null as any | null,
-};
-
 export let fallbackPlaylist: string[] = [];
 export let currentPlaylistIndex = 0;
 let isPlaylistInitialized = false;
@@ -109,40 +104,121 @@ function shuffle(array: string[]) {
 }
 
 // =============================================================
-// 3. MEZCLADORES MATEMÁTICOS DE PCM (TypedArrays)
+// 3. POOL DE BUFFERS PCM (evita allocations en hot path)
+// =============================================================
+// mixSamples y applyVolume son llamadas ~48 veces/segundo durante
+// crossfades/fades. Antes allocateaban un ArrayBuffer nuevo por
+// llamada, presionando el GC. Este pool rota N ArrayBuffers
+// pre-asignados al tamaño máximo visto. Después de writeToMaster()
+// (write + flush síncronos al pipe kernel) el buffer es seguro de
+// reutilizar.
+const PCM_POOL_SIZE = 4;
+const pcmPool: (ArrayBuffer | null)[] = new Array(PCM_POOL_SIZE).fill(null);
+let pcmPoolIdx = 0;
+let pcmMaxBytes = 0;
+
+function acquirePcmBuffer(byteLength: number): ArrayBuffer {
+  if (byteLength > pcmMaxBytes) {
+    pcmMaxBytes = byteLength;
+    for (let i = 0; i < PCM_POOL_SIZE; i++) {
+      pcmPool[i] = new ArrayBuffer(pcmMaxBytes);
+    }
+  }
+  const buf = pcmPool[pcmPoolIdx]!;
+  pcmPoolIdx = (pcmPoolIdx + 1) % PCM_POOL_SIZE;
+  return buf;
+}
+
+// =============================================================
+// 4. CACHÉ PERSISTENTE DE METADATOS FFPROBE
+// =============================================================
+// Evita spawmear ffprobe por cada canción nueva, especialmente en
+// loops de playlist corta donde la misma canción se repite. La
+// clave es la ruta absoluta del archivo; se invalida por mtime.
+const META_CACHE_FILE = ".meta-cache.json";
+const metaCache = new Map<string, { title: string; artist: string; duration: number; mtime: number }>();
+let metaCacheDirty = false;
+let metaCacheLoaded = false;
+
+function loadMetaCache() {
+  if (metaCacheLoaded) return;
+  metaCacheLoaded = true;
+  try {
+    const raw = fs.readFileSync(META_CACHE_FILE, "utf8");
+    const data = JSON.parse(raw);
+    if (data && typeof data === "object") {
+      for (const [k, v] of Object.entries(data)) {
+        if (v && typeof v === "object" && typeof (v as any).mtime === "number") {
+          metaCache.set(k, v as any);
+        }
+      }
+      rtmpLog.info(`[Meta Cache] Cargados ${metaCache.size} metadatos en caché desde ${META_CACHE_FILE}.`);
+    }
+  } catch {
+    // No existe o inválido - empezar vacío
+  }
+}
+
+function persistMetaCache() {
+  if (!metaCacheDirty) return;
+  try {
+    const obj: Record<string, { title: string; artist: string; duration: number; mtime: number }> = {};
+    for (const [k, v] of metaCache) obj[k] = v;
+    fs.writeFileSync(META_CACHE_FILE, JSON.stringify(obj));
+    metaCacheDirty = false;
+  } catch {
+    // noop
+  }
+}
+
+// =============================================================
+// 5. MEZCLADORES MATEMÁTICOS DE PCM (TypedArrays)
 // =============================================================
 function mixSamples(chunkA: Uint8Array, volA: number, chunkB: Uint8Array, volB: number): Uint8Array {
   const samplesA = new Int16Array(chunkA.buffer, chunkA.byteOffset, chunkA.byteLength / 2);
   const samplesB = new Int16Array(chunkB.buffer, chunkB.byteOffset, chunkB.byteLength / 2);
-  
+
   const length = Math.max(samplesA.length, samplesB.length);
-  const outBuffer = new ArrayBuffer(length * 2);
-  const outSamples = new Int16Array(outBuffer);
+  const byteLength = length * 2;
+  const outBuffer = acquirePcmBuffer(byteLength);
+  const outSamples = new Int16Array(outBuffer, 0, length);
 
-  for (let i = 0; i < length; i++) {
-    const sA = (samplesA[i] ?? 0) * volA;
-    const sB = (samplesB[i] ?? 0) * volB;
-
-    let mixed = sA + sB;
+  // Recorrer la parte solapada sin chequeo de undefined (fast path)
+  const minLen = Math.min(samplesA.length, samplesB.length);
+  for (let i = 0; i < minLen; i++) {
+    let mixed = (samplesA[i]! * volA) + (samplesB[i]! * volB);
     if (mixed > 32767) mixed = 32767;
-    if (mixed < -32768) mixed = -32768;
+    else if (mixed < -32768) mixed = -32768;
     outSamples[i] = mixed;
   }
-  return new Uint8Array(outBuffer);
+  // Cola del stream más largo (sin mezclar, solo volumen)
+  if (samplesA.length > minLen) {
+    for (let i = minLen; i < length; i++) {
+      outSamples[i] = samplesA[i]! * volA;
+    }
+  } else if (samplesB.length > minLen) {
+    for (let i = minLen; i < length; i++) {
+      outSamples[i] = samplesB[i]! * volB;
+    }
+  }
+
+  return new Uint8Array(outBuffer, 0, byteLength);
 }
 
 function applyVolume(chunk: Uint8Array, volume: number): Uint8Array {
   if (volume === 1.0) return chunk;
   if (volume === 0.0) return new Uint8Array(chunk.length);
 
-  const buffer = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
-  const samples = new Int16Array(buffer);
+  const byteLength = chunk.byteLength;
+  const outBuffer = acquirePcmBuffer(byteLength);
+  const outSamples = new Int16Array(outBuffer, 0, byteLength / 2);
+  const inSamples = new Int16Array(chunk.buffer, chunk.byteOffset, chunk.byteLength / 2);
 
-  for (let i = 0; i < samples.length; i++) {
-    const scaled = Math.round(samples[i]! * volume);
-    samples[i] = Math.max(-32768, Math.min(32767, scaled));
+  for (let i = 0; i < outSamples.length; i++) {
+    const scaled = Math.round(inSamples[i]! * volume);
+    outSamples[i] = Math.max(-32768, Math.min(32767, scaled));
   }
-  return new Uint8Array(buffer);
+  return new Uint8Array(outBuffer, 0, byteLength);
 }
 
 function writeToMaster(chunk: Uint8Array) {
@@ -188,6 +264,21 @@ async function getFileMetadata(file: string) {
     };
   }
 
+  loadMetaCache();
+
+  // Cache lookup: si tenemos el metadato y el mtime coincide, devolverlo sin ffprobe
+  let mtime = 0;
+  try {
+    const stat = fs.statSync(file);
+    mtime = stat.mtimeMs;
+    const cached = metaCache.get(file);
+    if (cached && cached.mtime === mtime) {
+      return { title: cached.title, artist: cached.artist, duration: cached.duration };
+    }
+  } catch {
+    // Si stat falla, no podemos usar la caché pero intentamos ffprobe igual
+  }
+
   try {
     const proc = Bun.spawn([
       "ffprobe",
@@ -203,11 +294,20 @@ async function getFileMetadata(file: string) {
     const data = JSON.parse(text);
     const tags = data.format?.tags || {};
     const duration = Number(data.format?.duration) || 0;
-    return {
+    const meta = {
       title: tags.title || tags.TITLE || "",
       artist: tags.artist || tags.ARTIST || "",
       duration,
     };
+
+    // Guardar en caché persistente
+    if (mtime > 0) {
+      metaCache.set(file, { ...meta, mtime });
+      metaCacheDirty = true;
+      persistMetaCache();
+    }
+
+    return meta;
   } catch (err) {
     rtmpLog.error("Error leyendo metadatos con ffprobe:", (err as Error).message);
     return { title: "", artist: "", duration: 0 };

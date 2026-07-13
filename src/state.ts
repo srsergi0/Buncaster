@@ -21,7 +21,6 @@ export const state = {
   isBroadcasting: false,
   sourceConnected: false,
   sourceProcess: null as any | null,
-  fallbackProcess: null as any | null,
   masterProcess: null as any | null,
   shuttingDown: false,
   startTime: new Date(),
