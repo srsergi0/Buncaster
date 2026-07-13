@@ -1,26 +1,17 @@
-FROM oven/bun:alpine
-
-# Instalar FFmpeg y limpiar la caché de apk para reducir el tamaño al máximo
-RUN apk add --no-cache ffmpeg
-
-# Directorio de trabajo
+# Stage 1: compilar binario estático con bun build --compile
+FROM oven/bun:alpine AS builder
 WORKDIR /app
-
-# Copiar archivos de dependencias
 COPY package.json bun.lock tsconfig.json ./
-
-# Instalar únicamente las dependencias de producción para minimizar tamaño
 RUN bun install --production --frozen-lockfile
-
-# Copiar el código fuente de la aplicación
 COPY src ./src
+RUN bun build --compile --target=bun-linux-x64-modern --outfile=buncaster src/index-rtmp.ts
 
-# Exponer los puertos correspondientes (HTTP: 4321 y RTMP: 1935 por defecto)
+# Stage 2: imagen mínima de runtime (solo ffmpeg + binario)
+FROM alpine:3.20
+RUN apk add --no-cache ffmpeg
+WORKDIR /app
+COPY --from=builder /app/buncaster /app/buncaster
 EXPOSE 4321
 EXPOSE 1935
-
-# Definir entorno de producción
 ENV NODE_ENV=production
-
-# Ejecutar el servidor de radio
-CMD ["bun", "run", "src/index-rtmp.ts"]
+CMD ["/app/buncaster"]
