@@ -4,6 +4,8 @@ import { rtmpLog } from "./logger";
 import { state } from "./state";
 import { broadcast } from "./broadcaster";
 import { bitrateDetector } from "./bitrate-detector";
+import { LameEncoder, isNativeLameAvailable } from "./lame-ffi";
+import { DspChain } from "./dsp";
 
 // =============================================================
 // 1. CLASE BUFFER FIFO DE AUDIO PCM
@@ -93,6 +95,10 @@ let isFallbackFadeInActive = false;
 let fallbackFadeInStartTime = 0;
 
 export let isStoppingFallback = false;
+
+// Encoder nativo (LAME-FFI + DSP Bun). Si está activo, reemplaza
+// el proceso master ffmpeg. Si es null, se usa el path ffmpeg.
+let nativeEncoder: { encoder: LameEncoder; dsp: DspChain | null } | null = null;
 
 function shuffle(array: string[]) {
   for (let i = array.length - 1; i > 0; i--) {
@@ -222,7 +228,29 @@ function applyVolume(chunk: Uint8Array, volume: number): Uint8Array {
 }
 
 function writeToMaster(chunk: Uint8Array) {
-  if (state.masterProcess?.stdin) {
+  if (nativeEncoder) {
+    // --- Modo nativo: DSP + LAME FFI (sin ffmpeg) ---
+    const frameBytes = 4; // stereo s16le = 4 bytes por frame
+    const alignedLen = Math.floor(chunk.byteLength / frameBytes) * frameBytes;
+    if (alignedLen === 0) return;
+
+    const pcm = new Int16Array(
+      chunk.buffer,
+      chunk.byteOffset,
+      alignedLen / 2,
+    );
+
+    const processed = nativeEncoder.dsp
+      ? nativeEncoder.dsp.process(pcm)
+      : pcm;
+
+    const mp3 = nativeEncoder.encoder.encode(processed);
+    if (mp3.length > 0) {
+      bitrateDetector.feed(mp3);
+      broadcast(mp3);
+    }
+  } else if (state.masterProcess?.stdin) {
+    // --- Modo ffmpeg (fallback) ---
     try {
       state.masterProcess.stdin.write(chunk);
       state.masterProcess.stdin.flush();
@@ -365,9 +393,37 @@ function initializeFallbackSource() {
 }
 
 export function startMasterEncoder() {
-  if (state.masterProcess) return;
+  if (state.masterProcess || nativeEncoder) return;
 
-  rtmpLog.info(`Iniciando Codificador Maestro a ${config.fallbackBitrateKbps}kbps...`);
+  // --- Intentar modo nativo (LAME-FFI + DSP Bun) ---
+  if (config.useNativeLame !== "false" && isNativeLameAvailable()) {
+    try {
+      const encoder = new LameEncoder(
+        48000,
+        2,
+        config.fallbackBitrateKbps,
+        2, // quality 2 = buena calidad (0=mejor, 9=más rápido)
+      );
+      const dsp = config.audioProcessing ? new DspChain() : null;
+      nativeEncoder = { encoder, dsp };
+      rtmpLog.info(
+        `[Master Encoder] Modo nativo activo (LAME-FFI${dsp ? " + DSP Bun" : ""}) a ${config.fallbackBitrateKbps}kbps. Sin proceso ffmpeg.`,
+      );
+      return;
+    } catch (err) {
+      rtmpLog.error(
+        "[Master Encoder] Error iniciando LAME nativo, fallback a ffmpeg:",
+        (err as Error).message,
+      );
+    }
+  }
+
+  // --- Fallback: FFmpeg master encoder ---
+  startFfmpegMasterEncoder();
+}
+
+function startFfmpegMasterEncoder() {
+  rtmpLog.info(`Iniciando Codificador Maestro FFmpeg a ${config.fallbackBitrateKbps}kbps...`);
 
   const args = [
     "-loglevel", "warning",
@@ -433,8 +489,22 @@ async function pipeMaster(reader: ReadableStreamDefaultReader<Uint8Array>) {
 }
 
 export function stopMasterEncoder() {
+  // --- Modo nativo ---
+  if (nativeEncoder) {
+    rtmpLog.info("Deteniendo Codificador Maestro Nativo...");
+    const flushed = nativeEncoder.encoder.flush();
+    if (flushed.length > 0) {
+      bitrateDetector.feed(flushed);
+      broadcast(flushed);
+    }
+    nativeEncoder.encoder.close();
+    nativeEncoder = null;
+    return;
+  }
+
+  // --- Modo ffmpeg ---
   if (!state.masterProcess) return;
-  rtmpLog.info("Deteniendo Codificador Maestro...");
+  rtmpLog.info("Deteniendo Codificador Maestro FFmpeg...");
   try {
     state.masterProcess.stdin.end();
     state.masterProcess.kill();

@@ -15,6 +15,7 @@ export interface Config {
   crossfadeSeconds: number;
   rtmpStreamKey: string;
   rtmpMinLiveSeconds: number;
+  useNativeLame: "auto" | "true" | "false";
 }
 
 function envInt(name: string): number {
@@ -64,6 +65,11 @@ function loadConfig(): Config {
     crossfadeSeconds: envInt("CROSSFADE_SECONDS"),
     rtmpStreamKey: process.env.RTMP_STREAM_KEY || "stream",
     rtmpMinLiveSeconds: envInt("RTMP_MIN_LIVE_SECONDS"),
+    useNativeLame: (() => {
+      const v = process.env.USE_NATIVE_LAME;
+      if (v === "true" || v === "false") return v;
+      return "auto";
+    })(),
   };
 
   if (cfg.httpPort === cfg.rtmpPort) {
