@@ -45,33 +45,31 @@ if [ "$IS_TERMUX" = true ]; then
     printf "  ${GREEN}[OK] git disponible${NC}\n"
     
     # Instalar Bun Android parcheado para Termux
-    if ! command -v bun &> /dev/null || ! bun --version &>/dev/null 2>&1; then
+    if ! bun --version &>/dev/null 2>&1; then
         printf "  ${BOLD}Instalando Bun (build Termux parcheado)...${NC}\n"
+        
+        # Eliminar instalaciones viejas que puedan conflictar
+        rm -f "$HOME/.bun/bin/bun" "$HOME/.bun/bin/bunx" 2>/dev/null
         
         # Intentar pkg install primero
         if pkg install bun -y 2>/dev/null && bun --version &>/dev/null 2>&1; then
             printf "  ${GREEN}[OK] Bun instalado via pkg${NC}\n"
         else
-            # Descargar .deb y extraer toda la estructura
+            # Descargar e instalar .deb con dpkg
             BUN_DEB="https://github.com/bd-loser/bun-termux/releases/latest/download/bun_1.3.14-patched_aarch64.deb"
             TMPDIR_BUN="${TMPDIR:-/tmp}"
             
             curl -fsSL "$BUN_DEB" -o "$TMPDIR_BUN/bun.deb"
-            mkdir -p "$TMPDIR_BUN/bun-extract"
-            dpkg-deb -x "$TMPDIR_BUN/bun.deb" "$TMPDIR_BUN/bun-extract"
-            
-            # Copiar toda la estructura al sistema
-            cp -r "$TMPDIR_BUN/bun-extract/data/data/com.termux/files/usr/"* "$PREFIX/" 2>/dev/null || true
-            chmod +x "$PREFIX/bin/bun" 2>/dev/null || true
-            chmod +x "$PREFIX/lib/bun-termux/bun" 2>/dev/null || true
-            rm -rf "$TMPDIR_BUN/bun.deb" "$TMPDIR_BUN/bun-extract"
+            dpkg -i --force-overwrite "$TMPDIR_BUN/bun.deb" || true
+            rm -f "$TMPDIR_BUN/bun.deb"
         fi
     fi
     
     # Verificar que bun funcione
     if ! bun --version &>/dev/null 2>&1; then
         printf "  ${RED}[ERROR] No se pudo instalar Bun.${NC}\n"
-        echo "  Intenta manualmente: pkg install bun"
+        echo "  Intenta manualmente:"
+        echo "    pkg install bun"
         exit 1
     fi
     
