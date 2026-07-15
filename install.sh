@@ -33,6 +33,76 @@ pc "$CYAN" "         B U N R A D I O   I N S T A L L     "
 pc "$CYAN" "  ============================================"
 echo ""
 
+# Detectar Termux
+IS_TERMUX=false
+if [ -d "/data/data/com.termux" ] || [ "$TERMUX_VERSION" ]; then
+    IS_TERMUX=true
+fi
+
+# En Termux, instalar desde codigo fuente
+if [ "$IS_TERMUX" = true ]; then
+    echo ""
+    printf "  ${YELLOW}[TERMUX] Instalando desde codigo fuente...${NC}\n"
+    echo ""
+    
+    # Verificar que bun este instalado
+    if ! command -v bun &> /dev/null; then
+        printf "  ${BOLD}Instalando Bun...${NC}\n"
+        curl -fsSL https://bun.sh/install | bash
+        export PATH="$HOME/.bun/bin:$PATH"
+        source ~/.bashrc 2>/dev/null || true
+    fi
+    printf "  ${GREEN}[OK] Bun disponible${NC}\n"
+    
+    # Clonar y instalar
+    REPO_DIR="$HOME/bunradio"
+    if [ -d "$REPO_DIR" ]; then
+        rm -rf "$REPO_DIR"
+    fi
+    
+    printf "  ${BOLD}Clonando repositorio...${NC}\n"
+    git clone --depth 1 "https://github.com/${REPO}.git" "$REPO_DIR"
+    
+    printf "  ${BOLD}Instalando dependencias...${NC}\n"
+    cd "$REPO_DIR"
+    bun install
+    
+    # Crear script launcher
+    cat > "$INSTALL_DIR/bunradio" << 'LAUNCHER'
+#!/bin/bash
+cd ~/bunradio && bun run start
+LAUNCHER
+    chmod +x "$INSTALL_DIR/bunradio"
+    
+    printf "  ${GREEN}[OK] Instalado en ${REPO_DIR}${NC}\n"
+    
+    echo ""
+    printf "${GREEN}  ============================================${NC}\n"
+    printf "${GREEN}        INSTALADO CORRECTAMENTE (TERMUX)     ${NC}\n"
+    printf "${GREEN}  ============================================${NC}\n"
+    echo ""
+    echo "  Ejecuta tu radio con:"
+    echo ""
+    printf "    ${CYAN}bunradio${NC}\n"
+    echo ""
+    echo "  O directamente:"
+    echo ""
+    printf "    ${CYAN}cd ~/bunradio && bun run start${NC}\n"
+    echo ""
+    echo "  Para crear tu radio:"
+    echo ""
+    printf "    ${CYAN}mkdir -p ~/musica${NC}\n"
+    printf "    ${CYAN}cp *.mp3 ~/musica/${NC}\n"
+    printf "    ${CYAN}bunradio${NC}\n"
+    echo ""
+    echo "  Links:"
+    echo "    Stream:  http://localhost:808/stream"
+    echo "    Panel:   http://localhost:808/admin"
+    echo "    OBS:     rtmp://localhost:1935/live"
+    echo ""
+    exit 0
+fi
+
 # Detectar SO, arquitectura y entorno
 detect_platform() {
     local os=$(uname -s | tr '[:upper:]' '[:lower:]')
