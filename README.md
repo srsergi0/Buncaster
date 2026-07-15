@@ -1,79 +1,187 @@
-# Radio Server — RTMP Ingest + HTTP Streaming + DJ Booth
+# 🎙️ BunRadio
 
-High-performance, professional-grade web radio server built with **Bun** and **FFmpeg**. Allows OBS Studio to broadcast audio directly via the standard RTMP protocol, seamlessly switching with a dynamic fallback music system. All audio is unified through a master encoder that generates a continuous, gapless MP3 stream for listeners.
+**Tu radio en un solo binario. Sin Node, sin npm, sin Docker.**
 
----
-
-## Key Features
-
-*   ⚡ **High Performance**: Built on Bun for maximum I/O speed and ultra-lightweight HTTP connections with minimal memory usage.
-*   📼 **Continuous Master Encoder (Liquidsoap-style)**: The server maintains a single permanent FFmpeg MP3 output encoder process. Sources (live OBS and fallback) inject raw **uncompressed digital PCM (`s16le`, 48000Hz, stereo)** audio. This ensures smooth, gapless transitions: listeners' players never lose connection or require pressing play again when switching sources.
-*   🎛️ **Dynamic Sound Processing (FM Radio-style)**: Optional limiter and dynamic compressor in the audio chain (`loudnorm` and `compand` under EBU R128 standard) to normalize volume and add body to the sound. Enable/disable from environment.
-*   📂 **Random Fallback Playlist**: Support for music folders (`FALLBACK_SOURCE`). The server dynamically scans the directory, filters supported audio formats, shuffles them using the Fisher-Yates algorithm, and plays them one by one, reshuffling in a loop when the list ends.
-*   🔗 **External Streams and URLs Support**: You can enqueue both local audio files and remote stream URLs (`http://`, `https://`, `rtmp://`). The server natively plays external URLs.
-*   📡 **Server-Sent Events (SSE)**: Instant bidirectional communication between the server and the web admin panel. Real-time metadata updates, broadcast status, and active listener counts without network polling.
-*   🔍 **Metadata via FFprobe**: Background extraction of title, artist, and duration from local fallback files to display an accurate progress bar in the panel. External URLs are safely skipped to avoid network latency.
-*   🔒 **Next-Generation DJ Booth**: Dark, sleek, and reactive web interface with interactive control over the playback queue (reorder, remove, clear), quick file library, and stream monitoring.
+Servidor de radio profesional built con **Bun** y **FFmpeg**. Acepta streaming en vivo desde OBS Studio via RTMP, genera una stream MP3 continua y gapless para oyentes, con sistema de fallback musical y panel de DJ web.
 
 ---
 
-## Prerequisites
+## ⚡ Empieza en 3 segundos
 
-Make sure you have the following installed on your system:
-1.  **[Bun](https://bun.sh/)** (JS/TS runtime).
-2.  **[FFmpeg](https://ffmpeg.org/)** (FFmpeg and FFprobe configured in the OS PATH).
+### Opción 1: Binario standalone (recomendado)
 
----
+```bash
+# Linux/macOS
+chmod +x bunradio-linux-x64
+./bunradio-linux-x64
 
-## Quick Start
+# Windows
+.\bunradio-windows-x64.exe
+```
 
-### 1. Install Dependencies
+**Eso es todo.** No necesitas Node, npm, Docker, ni configurar nada.
+
+### Opción 2: Docker
+
+```bash
+docker run -p 808:808 -p 1935:1935 -v ./musica:/app/musica bunradio:latest
+```
+
+### Opción 3: Desde código fuente
+
 ```bash
 bun install
+bun run start
 ```
 
-### 2. Configure Environment
-Copy the example template and adjust variables as needed:
+---
+
+## 🎯 Zero Config
+
+BunRadio funciona **sin configuración**. Ejecuta el binario y:
+
+| Aspecto | Comportamiento automático |
+|---------|---------------------------|
+| **Puerto HTTP** | 808 (o el siguiente disponible) |
+| **Puerto RTMP** | 1935 (o el siguiente disponible) |
+| **Stream Key** | Se genera automáticamente (ej: `a1b2c3d4e5f6...`) |
+| **Música fallback** | Auto-detecta carpetas `musica/`, `music/`, `audio/`, `songs/` |
+| **Procesamiento de audio** | Activado por defecto (limiter + compressor) |
+| **Crossfade** | 2 segundos entre canciones |
+| **Panel admin** | Sin contraseña (acceso abierto) |
+
+### Configuración opcional
+
+Solo edita lo que quieras cambiar via variables de entorno o archivo `.env`:
+
 ```bash
-cp .env.example .env
+# Ejemplo: cambiar puerto y poner contraseña al admin
+PORT=9090
+ADMIN_USER=dj
+ADMIN_PASSWORD=mipassword
 ```
 
-Main variables in `.env`:
-*   `PORT`: HTTP port for listeners and the web panel.
-*   `RTMP_PORT`: RTMP port for OBS to connect to.
-*   `STREAM_BITRATE_KBPS`: Final MP3 encoding bitrate (e.g., `320` for maximum quality).
-*   `FALLBACK_SOURCE`: Path to an audio file or a folder with music for fallback (e.g., `music`).
-*   `AUDIO_PROCESSING`: Enable (`true`) or disable (`false`) the dynamic volume and compression processor.
+Ver `.env.example` para todas las opciones.
 
-### 3. Run the Server
-*   **Development mode (with auto-reload and watch)**:
-    ```bash
-    bun run dev
-    ```
-*   **Production mode**:
-    ```bash
-    bun run start
-    ```
+---
 
-### 4. Running with Docker (Alternative - Recommended for Deployment)
-If you prefer running the station inside a container, you can choose between pulling the pre-built image or building it locally.
+## 🖥️ Panel de DJ Web
 
-#### Option A: Pull pre-built image from GHCR (Fastest, no compilation needed)
-You don't need any source files on your server. Just create a `docker-compose.yml` file and a `.env` configuration file on your target machine:
+Accede a `http://localhost:808/admin` para controlar tu radio:
+
+- **Now Playing**: Info de la canción actual con barra de progreso
+- **Controles**: Saltar canción, pausar/reanudar fallback, re-shuffle
+- **Cola de reproducción**: Agregar, eliminar, reordenar canciones
+- **Biblioteca**: Explorar y reproducir archivos de música
+- **Métricas**: Oyentes conectados, bytes enviados, bitrate detectado
+
+---
+
+## 📡 OBS Studio Configuration
+
+1. Abre **OBS Studio**
+2. Ve a **Settings** → **Stream**
+3. **Service**: `Custom...`
+4. **Server**: `rtmp://localhost:1935/live`
+5. **Stream Key**: (la que aparece en la consola al iniciar)
+6. Click **"Start Streaming"**
+
+---
+
+## 🔌 API REST
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `GET /stream` | GET | Stream de audio MP3 |
+| `GET /health` | GET | Health check con diagnósticos |
+| `GET /status` | GET | Estado de la estación (JSON) |
+| `GET /metrics` | GET | Métricas Prometheus |
+| `GET /admin` | GET | Panel DJ web |
+| `GET /admin/api/events` | GET | Server-Sent Events |
+| `GET /admin/api/current` | GET | Pista actual |
+| `GET /admin/api/files` | GET | Biblioteca de audio |
+| `GET /admin/api/queue` | GET | Cola de reproducción |
+| `POST /admin/api/queue/push` | POST | Agregar a la cola |
+| `POST /admin/api/queue/remove` | POST | Eliminar de la cola |
+| `POST /admin/api/queue/clear` | POST | Limpiar cola |
+| `POST /admin/api/queue/move` | POST | Reordenar cola |
+| `POST /admin/api/skip` | POST | Saltar pista actual |
+| `POST /admin/api/playlist/shuffle` | POST | Re-shuffle playlist |
+| `POST /admin/api/fallback/toggle` | POST | Pausar/reanudar fallback |
+
+---
+
+## 🏥 Health Check
+
+El endpoint `/health` retorna diagnósticos completos:
+
+```json
+{
+  "status": "ok",
+  "uptime": 120,
+  "memory": { "rss": 72, "heapTotal": 2, "heapUsed": 42, "external": 41 },
+  "processes": { "masterEncoder": false, "rtmpSource": true },
+  "broadcasting": false,
+  "fallback": { "active": true, "currentTrack": "I'm on My Way" },
+  "listeners": 0
+}
+```
+
+Docker incluye `HEALTHCHECK` automático cada 30 segundos.
+
+---
+
+## 🔨 Build para todas las plataformas
+
+Compila binarios para Linux, Windows y macOS:
+
+```bash
+# Con Docker (cross-compile para todas las plataformas)
+bash build.sh
+
+# Solo para tu plataforma
+bun run build
+```
+
+### Output
+
+| Plataforma | Archivo | Tamaño |
+|------------|---------|--------|
+| Linux x64 | `bunradio-linux-x64` | ~87 MB |
+| Linux ARM64 | `bunradio-linux-arm64` | ~85 MB |
+| macOS Intel | `bunradio-macos-x64` | ~66 MB |
+| macOS Apple Silicon | `bunradio-macos-arm64` | ~61 MB |
+| Windows x64 | `bunradio-windows-x64.exe` | ~94 MB |
+
+---
+
+## 🐳 Docker
+
+### Ejecutar
+
+```bash
+docker run -d \
+  --name bunradio \
+  -p 808:808 \
+  -p 1935:1935 \
+  -v ./musica:/app/musica \
+  --restart unless-stopped \
+  bunradio:latest
+```
+
+### Docker Compose
 
 ```yaml
 services:
   bunradio:
-    image: ghcr.io/srsergi0/buncaster:latest
+    image: bunradio:latest
     container_name: bunradio
     restart: unless-stopped
     ports:
-      - "${PORT:-4321}:${PORT:-4321}"
-      - "${RTMP_PORT:-1935}:${RTMP_PORT:-1935}"
-    env_file:
-      - .env
+      - "808:808"
+      - "1935:1935"
     volumes:
-      - ./${FALLBACK_SOURCE:-musica}:/app/${FALLBACK_SOURCE:-musica}
+      - ./musica:/app/musica
     logging:
       driver: "json-file"
       options:
@@ -81,130 +189,61 @@ services:
         max-file: "3"
 ```
 
-Then start the server with:
-```bash
-docker compose up -d
-```
-
-#### Option B: Build and run locally with Docker Compose
-If you have the source files locally and want to build the container from scratch:
-1. Make sure you have your `.env` file configured.
-2. Run:
-   ```bash
-   docker compose up -d --build
-   ```
-
-To check logs or stop the server:
-```bash
-# View live logs
-docker compose logs -f
-
-# Stop container
-docker compose down
-```
-
 ---
 
-### 5. Running Natively on Windows (Absolute Peak Performance & Low Footprint)
-For Windows users wanting the absolute lowest resource usage (~30-50MB RAM and 0% idle CPU compared to ~1.5GB RAM with Docker WSL2), you can run natively:
-1. Double-click the **[start-radio.bat](file:///d:/cursos/bunradio/start-radio.bat)** file.
-2. The script will automatically verify your environment (checks Bun & FFmpeg), install dependencies if missing, and launch the server.
+## 🤖 MCP Integration (AI Assistants)
 
----
+BunRadio incluye un servidor MCP para controlar la radio desde Claude Desktop, Cursor, o Windsurf.
 
-## OBS Studio Configuration
+### Configuración
 
-Broadcasting to the server is extremely simple using the standard streaming settings:
-
-1.  Open **OBS Studio**.
-2.  Go to **Settings** → **Stream**.
-3.  In **Service**, select **Custom...**.
-4.  **Server**: `rtmp://localhost:1935/live` *(replace `localhost` with your server's IP if broadcasting from another machine)*.
-5.  **Stream Key**: `stream`
-6.  *(Optional)* In **Settings** → **Output** → **Audio**, you can set the audio bitrate quality to **320** to maximize transmission fidelity (ideal for 5G/Fiber).
-7.  Click **"Start Streaming"**. The server will stop the fallback music immediately and broadcast the OBS signal without gaps.
-
----
-
-## REST API for Control and Interaction
-
-All admin endpoints require basic authentication (`ADMIN_USER` and `ADMIN_PASSWORD` in `.env`):
-
-| Endpoint | Method | Format / Body | Description |
-| :--- | :--- | :--- | :--- |
-| `GET /` or `/stream` | `GET` | *None* | **MP3 audio stream** for players (Browser, VLC, Winamp, etc.). |
-| `GET /admin` | `GET` | *None* | Interactive **Admin DJ Booth**. |
-| `GET /admin/api/events` | `GET` | *Stream (SSE)* | Server-Sent Events channel for live updates. |
-| `GET /admin/api/current` | `GET` | *None* | Returns JSON with details of the currently playing track or source. |
-| `GET /admin/api/files` | `GET` | *None* | Dynamically scans and returns the audio library in the `FALLBACK_SOURCE` folder. |
-| `GET /admin/api/queue` | `GET` | *None* | Lists all items currently in the priority wait queue. |
-| `POST /admin/api/queue/push` | `POST` | `{"file": "path/url"}` | Enqueues a local file or remote network URL. |
-| `POST /admin/api/queue/remove`| `POST` | `{"index": 0}` | Removes a track from the queue by index. |
-| `POST /admin/api/queue/clear` | `POST` | *None* | Completely clears the playback queue. |
-| `POST /admin/api/queue/move`  | `POST` | `{"from": 1, "to": 0}`| Reorders an item's position in the queue. |
-| `POST /admin/api/skip` | `POST` | *None* | Skips the currently active fallback song. |
-| `POST /admin/api/playlist/shuffle`| `POST` | *None* | Shuffles the playlist randomly and jumps to the first track. |
-| `POST /admin/api/fallback/toggle` | `POST` | *None* | Enables or disables (pauses) fallback music playback. |
-| `GET /status` | `GET` | *None* | Public station status in JSON format. |
-| `GET /metrics` | `GET` | *None* | Metrics formatted for **Prometheus** (listeners, bytes, etc.). |
-| `GET /health` | `GET` | *None* | Health check. |
-
----
-
-## Model Context Protocol (MCP) Integration
-
-The server includes an integrated MCP (Model Context Protocol) layer built using the ultra-lightweight `mcp-lite` package. This allows LLM agents and IDE assistants (like Cursor, Windsurf, or Claude Desktop) to directly inspect and control your radio station using structured tools.
-
-### Available Tools
-The MCP server registers the following tools:
-*   `get_status`: Returns current radio status, broadcasting state, listener count, and current track metadata.
-*   `get_queue`: Retrieves the priority wait queue.
-*   `push_to_queue` (arguments: `file`): Adds a local audio file or stream URL to the queue.
-*   `remove_from_queue` (arguments: `index`): Removes an item from the queue by index.
-*   `clear_queue`: Clears all items from the playback queue.
-*   `move_in_queue` (arguments: `from`, `to`): Reorders items in the queue.
-*   `skip_track`: Skips the current fallback track.
-*   `shuffle_playlist`: Shuffles the fallback music directory.
-*   `list_files`: Lists all supported audio files in your music directory.
-*   `toggle_fallback`: Pauses or resumes the fallback music playback.
-
-### Connection Modes
-
-#### 1. HTTP/SSE Transport (Automatic with `bun run dev`)
-When the radio server starts via `bun run dev`, the MCP server is automatically hosted inline at:
-```http
-http://localhost:4321/mcp
-```
-To connect Claude Desktop via SSE, add the following to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
     "bunradio": {
-      "url": "http://localhost:4321/mcp"
+      "url": "http://localhost:808/mcp"
     }
   }
 }
 ```
 
-#### 2. Stdio Subprocess Transport (Alternative)
-You can also launch the MCP server as a standalone stdio process that communicates with the active HTTP server:
-```json
-{
-  "mcpServers": {
-    "bunradio": {
-      "command": "bun",
-      "args": ["run", "src/mcp-server.ts"],
-      "env": {
-        "BUNRADIO_API_URL": "http://localhost:4321"
-      }
-    }
-  }
-}
+### Herramientas disponibles
+
+- `get_status` - Estado de la radio
+- `get_queue` - Cola de reproducción
+- `push_to_queue` - Agregar pista
+- `skip_track` - Saltar pista
+- `shuffle_playlist` - Re-shuffle
+- `toggle_fallback` - Pausar/reanudar
+- Y más...
+
+---
+
+## 📁 Estructura del proyecto
+
+```
+bunradio/
+├── src/
+│   ├── index-rtmp.ts      # Entry point
+│   ├── config.ts           # Configuración (todo opcional)
+│   ├── audio-router.ts     # Motor de audio principal
+│   ├── broadcaster.ts      # Fan-out a oyentes
+│   ├── pre-buffer.ts       # Buffer para conexión instantánea
+│   ├── dsp.ts              # Cadena de procesamiento de audio
+│   ├── lame-ffi.ts         # Encoder MP3 nativo via FFI
+│   ├── http-server.ts      # Servidor HTTP + API
+│   ├── http-helpers.ts     # Utilidades + Panel DJ embebido
+│   ├── mcp-server.ts       # Servidor MCP para IA
+│   └── logger.ts           # Sistema de logging
+├── musica/                 # Carpeta de música fallback
+├── build.sh               # Script de build multi-plataforma
+├── install.sh             # Instalador automático
+├── Dockerfile             # Build multi-stage para Docker
+└── docker-compose.yml     # Configuración Docker Compose
 ```
 
 ---
 
-## License
+## 📜 Licencia
 
-This project is licensed under the [MIT](LICENSE) license.
-
+[MIT](LICENSE)

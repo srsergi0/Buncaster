@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun run --watch src/index-rtmp.ts",
     "start": "bun run src/index-rtmp.ts",
+    "build": "bun build --compile --outfile=bunradio src/index-rtmp.ts",
     "mcp": "bun run src/mcp-server.ts"
   },
   "devDependencies": {

@@ -1,3 +1,7 @@
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface Config {
@@ -18,11 +22,9 @@ export interface Config {
   useNativeLame: "auto" | "true" | "false";
 }
 
-function envInt(name: string): number {
+function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
-  if (!raw) {
-    throw new Error(`Falta la variable de entorno obligatoria: ${name}`);
-  }
+  if (!raw) return fallback;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0) {
     throw new Error(`Variable de entorno ${name} inválida: "${raw}" (se esperaba un entero no negativo)`);
@@ -30,41 +32,61 @@ function envInt(name: string): number {
   return n;
 }
 
-function envStr(name: string): string {
+function envBool(name: string, fallback: boolean): boolean {
   const val = process.env[name];
-  if (val === undefined) {
-    throw new Error(`Falta la variable de entorno obligatoria: ${name}`);
-  }
-  return val;
-}
-
-function envBool(name: string): boolean {
-  const val = process.env[name];
-  if (val === undefined) {
-    throw new Error(`Falta la variable de entorno obligatoria: ${name}`);
-  }
+  if (!val) return fallback;
   if (val !== "true" && val !== "false") {
     throw new Error(`Variable de entorno ${name} inválida: "${val}" (se esperaba "true" o "false")`);
   }
   return val === "true";
 }
 
+function findFreePort(start: number, exclude: number[]): number {
+  let port = start;
+  while (exclude.includes(port)) port++;
+  return port;
+}
+
+function generateStreamKey(): string {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+function autoDetectMusicFolder(): string | undefined {
+  const candidates = ["musica", "music", "audio", "songs", "fallback"];
+  for (const name of candidates) {
+    const dir = path.resolve(process.cwd(), name);
+    if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+      const files = fs.readdirSync(dir).filter((f) => /\.(mp3|flac|wav|m4a|aac|ogg)$/i.test(f));
+      if (files.length > 0) return dir;
+    }
+  }
+  return undefined;
+}
+
 function loadConfig(): Config {
+  const rtmpKey = process.env.RTMP_STREAM_KEY || generateStreamKey();
+  const httpPort = envInt("PORT", 808);
+  const rtmpPort = envInt("RTMP_PORT", findFreePort(1935, [httpPort]));
+
+  if (httpPort === rtmpPort) {
+    throw new Error("PORT y RTMP_PORT no pueden ser el mismo puerto");
+  }
+
   const cfg: Config = {
-    httpPort: envInt("PORT"),
-    rtmpPort: envInt("RTMP_PORT"),
-    maxListeners: envInt("MAX_LISTENERS"),
-    preBufferBytes: envInt("PREBUFFER_BYTES"),
-    corsOrigin: envStr("CORS_ORIGIN"),
+    httpPort,
+    rtmpPort,
+    maxListeners: envInt("MAX_LISTENERS", 500),
+    preBufferBytes: envInt("PREBUFFER_BYTES", 65536),
+    corsOrigin: process.env.CORS_ORIGIN || "*",
     adminUser: process.env.ADMIN_USER || undefined,
     adminPassword: process.env.ADMIN_PASSWORD || undefined,
     logLevel: (process.env.LOG_LEVEL as LogLevel) || "info",
-    fallbackBitrateKbps: envInt("STREAM_BITRATE_KBPS"),
-    fallbackSource: process.env.FALLBACK_SOURCE || undefined,
-    audioProcessing: envBool("AUDIO_PROCESSING"),
-    crossfadeSeconds: envInt("CROSSFADE_SECONDS"),
-    rtmpStreamKey: process.env.RTMP_STREAM_KEY || "stream",
-    rtmpMinLiveSeconds: envInt("RTMP_MIN_LIVE_SECONDS"),
+    fallbackBitrateKbps: envInt("STREAM_BITRATE_KBPS", 320),
+    fallbackSource: process.env.FALLBACK_SOURCE || autoDetectMusicFolder(),
+    audioProcessing: envBool("AUDIO_PROCESSING", true),
+    crossfadeSeconds: envInt("CROSSFADE_SECONDS", 2),
+    rtmpStreamKey: rtmpKey,
+    rtmpMinLiveSeconds: envInt("RTMP_MIN_LIVE_SECONDS", 10),
     useNativeLame: (() => {
       const v = process.env.USE_NATIVE_LAME;
       if (v === "true" || v === "false") return v;
@@ -72,9 +94,6 @@ function loadConfig(): Config {
     })(),
   };
 
-  if (cfg.httpPort === cfg.rtmpPort) {
-    throw new Error("PORT y RTMP_PORT no pueden ser el mismo puerto");
-  }
   return cfg;
 }
 

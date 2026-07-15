@@ -17,13 +17,30 @@ import "./http-server"; // Levanta el servidor HTTP automáticamente al importar
 
 // Imprimir instrucciones de conexión en la consola
 console.log("");
-console.log("=== CONFIGURACIÓN DE OBS STUDIO ===");
-console.log("1. Abre OBS Studio");
-console.log("2. Ve a Settings (Ajustes) > Stream (Emisión)");
-console.log("3. Elige Service (Servicio): Custom... (Personalizado)");
-console.log(`4. Server (Servidor): rtmp://localhost:${config.rtmpPort}/live`);
-console.log(`5. Stream Key (Clave de transmisión): ${config.rtmpStreamKey}`);
-console.log("6. ¡Haz clic en 'Start Streaming' (Iniciar Emisión) para comenzar!");
+console.log("  ╔══════════════════════════════════════════════════╗");
+console.log("  ║           🎙️  B U N R A D I O                  ║");
+console.log("  ║          Tu radio está lista.                   ║");
+console.log("  ╚══════════════════════════════════════════════════╝");
+console.log("");
+console.log("  ▸ STREAM (Escuchar):");
+console.log(`    http://localhost:${config.httpPort}/stream`);
+console.log("");
+console.log("  ▸ PANEL DE CONTROL:");
+console.log(`    http://localhost:${config.httpPort}/admin`);
+if (config.adminUser) {
+  console.log(`    Usuario: ${config.adminUser}`);
+}
+console.log("");
+console.log("  ▸ ENVIAR DESDE OBS STUDIO:");
+console.log("    Servicio:   Custom");
+console.log(`    Servidor:   rtmp://localhost:${config.rtmpPort}/live`);
+console.log(`    Stream Key: ${config.rtmpStreamKey}`);
+console.log("");
+if (config.fallbackSource) {
+  console.log(`  ▸ MÚSICA: ${config.fallbackSource}`);
+} else {
+  console.log("  ▸ MÚSICA: No detectada. Coloca una carpeta 'musica' o 'music' junto al binario.");
+}
 console.log("");
 
 // Arrancar audio de respaldo (fallback) inmediatamente

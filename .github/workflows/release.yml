@@ -1,0 +1,86 @@
+name: Build & Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Linux x64
+        run: bun build --compile --target=bun-linux-x64-modern --outfile=dist/bunradio-linux-x64 src/index-rtmp.ts
+
+      - name: Build Linux ARM64
+        run: bun build --compile --target=bun-linux-arm64 --outfile=dist/bunradio-linux-arm64 src/index-rtmp.ts
+
+      - name: Build Windows x64
+        run: bun build --compile --target=bun-windows-x64-modern --outfile=dist/bunradio-windows-x64.exe src/index-rtmp.ts
+
+      - name: Build macOS Intel
+        run: bun build --compile --target=bun-darwin-x64 --outfile=dist/bunradio-macos-x64 src/index-rtmp.ts
+
+      - name: Build macOS Apple Silicon
+        run: bun build --compile --target=bun-darwin-arm64 --outfile=dist/bunradio-macos-arm64 src/index-rtmp.ts
+
+      - name: Get version
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: BunRadio ${{ steps.version.outputs.tag }}
+          body: |
+            ## 🎙️ BunRadio ${{ steps.version.outputs.tag }}
+            
+            Tu radio en un solo binario. Sin Node, sin npm, sin Docker.
+            
+            ### Descarga
+            | Plataforma | Archivo |
+            |------------|---------|
+            | Linux x64 | `bunradio-linux-x64` |
+            | Linux ARM64 | `bunradio-linux-arm64` |
+            | Windows x64 | `bunradio-windows-x64.exe` |
+            | macOS Intel | `bunradio-macos-x64` |
+            | macOS Apple Silicon | `bunradio-macos-arm64` |
+            
+            ### Instalación rápida
+            ```bash
+            # Linux/macOS
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+            
+            # O descarga directamente y ejecuta
+            chmod +x bunradio-linux-x64
+            ./bunradio-linux-x64
+            ```
+            
+            ### ¡Tu radio está lista!
+            - Coloca una carpeta `musica` junto al binario
+            - Ejecuta `./bunradio`
+            - Abre OBS → Custom → `rtmp://localhost:1935/live`
+            - Stream key se genera automáticamente
+          files: |
+            dist/bunradio-linux-x64
+            dist/bunradio-linux-arm64
+            dist/bunradio-windows-x64.exe
+            dist/bunradio-macos-x64
+            dist/bunradio-macos-arm64
+          draft: false
+          prerelease: false
