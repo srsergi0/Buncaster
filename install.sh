@@ -115,12 +115,14 @@ if [ "$IS_TERMUX" = true ]; then
     # Instalar dependencias
     printf "  ${BOLD}Instalando dependencias...${NC}\n"
     cd "$REPO_DIR"
-    bun install
+    BUN_PATH=$(which bun)
+    "$BUN_PATH" install
     
     # Crear script launcher
     mkdir -p "$INSTALL_DIR"
+    BUN_PATH=$(which bun)
     echo '#!/bin/bash' > "$INSTALL_DIR/bunradio"
-    echo 'cd ~/bunradio && bun run start' >> "$INSTALL_DIR/bunradio"
+    echo "cd ~/bunradio && \"$BUN_PATH\" run start" >> "$INSTALL_DIR/bunradio"
     chmod +x "$INSTALL_DIR/bunradio"
     
     # Agregar al PATH si no esta
