@@ -48,28 +48,56 @@ if [ "$IS_TERMUX" = true ]; then
     if ! bun --version &>/dev/null 2>&1; then
         printf "  ${BOLD}Instalando Bun (build Termux parcheado)...${NC}\n"
         
-        # Eliminar instalaciones viejas que puedan conflictar
-        rm -f "$HOME/.bun/bin/bun" "$HOME/.bun/bin/bunx" 2>/dev/null
+        # Eliminar instalaciones viejas
+        rm -rf "$HOME/.bun/bin/bun" "$HOME/.bun/bin/bunx" 2>/dev/null
         
         # Intentar pkg install primero
         if pkg install bun -y 2>/dev/null && bun --version &>/dev/null 2>&1; then
             printf "  ${GREEN}[OK] Bun instalado via pkg${NC}\n"
         else
-            # Descargar e instalar .deb con dpkg
+            # Descargar .deb y extraer manualmente
             BUN_DEB="https://github.com/bd-loser/bun-termux/releases/latest/download/bun_1.3.14-patched_aarch64.deb"
             TMPDIR_BUN="${TMPDIR:-/tmp}"
             
+            rm -rf "$TMPDIR_BUN/bun-extract"
+            mkdir -p "$TMPDIR_BUN/bun-extract"
+            
             curl -fsSL "$BUN_DEB" -o "$TMPDIR_BUN/bun.deb"
-            dpkg -i --force-overwrite "$TMPDIR_BUN/bun.deb" || true
-            rm -f "$TMPDIR_BUN/bun.deb"
+            dpkg-deb -x "$TMPDIR_BUN/bun.deb" "$TMPDIR_BUN/bun-extract"
+            
+            # Verificar que el binario existe en el .deb
+            DEB_BIN="$TMPDIR_BUN/bun-extract/data/data/com.termux/files/usr/lib/bun-termux/bun"
+            if [ -f "$DEB_BIN" ]; then
+                # Copiar binario y launcher
+                mkdir -p "$PREFIX/lib/bun-termux"
+                cp "$DEB_BIN" "$PREFIX/lib/bun-termux/bun"
+                chmod +x "$PREFIX/lib/bun-termux/bun"
+                
+                # Copiar launcher
+                cp "$TMPDIR_BUN/bun-extract/data/data/com.termux/files/usr/bin/bun" "$PREFIX/bin/bun"
+                chmod +x "$PREFIX/bin/bun"
+                
+                # Copiar shim si existe
+                SHIM="$TMPDIR_BUN/bun-extract/data/data/com.termux/files/usr/lib/bun-termux/libbun-android-fix.so"
+                if [ -f "$SHIM" ]; then
+                    cp "$SHIM" "$PREFIX/lib/bun-termux/libbun-android-fix.so"
+                fi
+                
+                printf "  ${GREEN}[OK] Bun instalado manualmente${NC}\n"
+            else
+                printf "  ${RED}[ERROR] El .deb no contiene el binario esperado${NC}\n"
+                echo "  Intenta: pkg install bun"
+                exit 1
+            fi
+            
+            rm -rf "$TMPDIR_BUN/bun.deb" "$TMPDIR_BUN/bun-extract"
         fi
     fi
     
     # Verificar que bun funcione
     if ! bun --version &>/dev/null 2>&1; then
         printf "  ${RED}[ERROR] No se pudo instalar Bun.${NC}\n"
-        echo "  Intenta manualmente:"
-        echo "    pkg install bun"
+        echo "  Intenta manualmente: pkg install bun"
         exit 1
     fi
     
