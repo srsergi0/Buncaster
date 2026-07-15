@@ -8,7 +8,7 @@
 import { config } from "./config";
 import { sysLog, httpLog } from "./logger";
 import { state } from "./state";
-import { startFallback, stopFallback, stopMasterEncoder, runRtmpListener } from "./audio-router";
+import { startFallback, stopFallback, stopMasterEncoder, stopPlaylistWatcher, runRtmpListener } from "./audio-router";
 import "./http-server"; // Levanta el servidor HTTP automáticamente al importar
 
 // =============================================================
@@ -69,6 +69,7 @@ function shutdown(signal: string): void {
   state.clients.clear();
 
   // Matar subprocesos de FFmpeg activos
+  stopPlaylistWatcher();
   stopFallback();
   stopMasterEncoder();
 

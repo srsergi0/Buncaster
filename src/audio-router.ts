@@ -392,6 +392,122 @@ function initializeFallbackSource() {
   }
 }
 
+// =============================================================
+// 3b. FILE WATCHER — Detección en caliente de cambios en la carpeta fallback
+// =============================================================
+let playlistWatcher: fs.FSWatcher | null = null;
+let rescanDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const RESCAN_DEBOUNCE_MS = 500;
+
+/**
+ * Re-escanea la carpeta de fallback y reconstruye la playlist.
+ * Preserva el orden relativo de las canciones que siguen existentes
+ * y ajusta el índice actual para no perder la posición.
+ */
+function rescanPlaylist() {
+  if (!config.fallbackSource || !isPlaylistInitialized) return;
+
+  try {
+    const stat = fs.statSync(config.fallbackSource);
+    if (!stat.isDirectory()) return;
+
+    const newFiles = getAudioFilesRecursive(config.fallbackSource);
+    const oldFiles = new Set(fallbackPlaylist);
+
+    // Detectar cambios
+    const added = newFiles.filter((f) => !oldFiles.has(f));
+    const removed = fallbackPlaylist.filter((f) => !newFiles.includes(f));
+
+    if (added.length === 0 && removed.length === 0) return; // Sin cambios reales
+
+    // Loggear cambios
+    for (const f of added) {
+      rtmpLog.info(`[Playlist Watch] + Canción añadida: ${f.split("/").pop()}`);
+    }
+    for (const f of removed) {
+      rtmpLog.info(`[Playlist Watch] - Canción eliminada: ${f.split("/").pop()}`);
+    }
+
+    // Determinar la canción que está sonando ahora mismo para preservar posición
+    const currentFile = state.currentTrack?.file;
+    const oldIndex = currentPlaylistIndex > 0 ? currentPlaylistIndex - 1 : 0;
+    const fileAtIndex = fallbackPlaylist[oldIndex];
+
+    // Reconstruir playlist: mantener orden relativo de las que siguen, añadir nuevas al final
+    const existingInOrder = fallbackPlaylist.filter((f) => newFiles.includes(f));
+    const trulyNew = added; // Ya están en newFiles pero no en oldFiles
+    fallbackPlaylist.length = 0;
+    fallbackPlaylist.push(...existingInOrder, ...trulyNew);
+
+    // Reconstruir índice: apuntar a la siguiente canción después de la que estaba sonando
+    if (currentFile && newFiles.includes(currentFile)) {
+      const idx = fallbackPlaylist.indexOf(currentFile);
+      currentPlaylistIndex = (idx + 1) % fallbackPlaylist.length;
+    } else if (fileAtIndex && newFiles.includes(fileAtIndex)) {
+      const idx = fallbackPlaylist.indexOf(fileAtIndex);
+      currentPlaylistIndex = (idx + 1) % fallbackPlaylist.length;
+    } else {
+      // La canción de referencia ya no existe, ajustar índice
+      if (currentPlaylistIndex > fallbackPlaylist.length) {
+        currentPlaylistIndex = 0;
+      }
+    }
+
+    rtmpLog.info(
+      `[Playlist Watch] Playlist reconstruida: ${removed.length} eliminada(s), ${added.length} añadida(s). Total: ${fallbackPlaylist.length} canciones.`,
+    );
+    broadcastSse("playlist-updated", { playlist: fallbackPlaylist });
+  } catch (err) {
+    rtmpLog.error("[Playlist Watch] Error al re-escanear carpeta:", (err as Error).message);
+  }
+}
+
+/**
+ * Inicia el file watcher en la carpeta de fallback.
+ * Usa debounce para batchear cambios rápidos (copiar múltiples archivos, etc.)
+ * Solo se llama una vez, se protege con playlistWatcher.
+ */
+function startPlaylistWatcher() {
+  if (playlistWatcher || !config.fallbackSource) return;
+
+  try {
+    const stat = fs.statSync(config.fallbackSource);
+    if (!stat.isDirectory()) return;
+
+    playlistWatcher = fs.watch(config.fallbackSource, { recursive: true }, (_event, filename) => {
+      if (!filename) return;
+      // Filtrar solo archivos de audio
+      if (!/\.(mp3|flac|wav|m4a|aac|ogg)$/i.test(filename)) return;
+
+      // Debounce: cancelar timer anterior y crear uno nuevo
+      if (rescanDebounceTimer) clearTimeout(rescanDebounceTimer);
+      rescanDebounceTimer = setTimeout(() => {
+        rescanPlaylist();
+        rescanDebounceTimer = null;
+      }, RESCAN_DEBOUNCE_MS);
+    });
+
+    rtmpLog.info(`[Playlist Watch] Monitoreando carpeta de fallback: ${config.fallbackSource}`);
+  } catch (err) {
+    rtmpLog.warn(`[Playlist Watch] No se pudo monitorear la carpeta: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * Detiene el file watcher (llamado en shutdown).
+ */
+export function stopPlaylistWatcher() {
+  if (rescanDebounceTimer) {
+    clearTimeout(rescanDebounceTimer);
+    rescanDebounceTimer = null;
+  }
+  if (playlistWatcher) {
+    playlistWatcher.close();
+    playlistWatcher = null;
+    rtmpLog.info("[Playlist Watch] Watcher detenido.");
+  }
+}
+
 export function startMasterEncoder() {
   if (state.masterProcess || nativeEncoder) return;
 
@@ -535,6 +651,7 @@ export function startFallback() {
 
   if (!isPlaylistInitialized) {
     initializeFallbackSource();
+    startPlaylistWatcher();
   }
 
   startMasterEncoder();
