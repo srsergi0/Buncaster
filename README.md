@@ -280,53 +280,29 @@ bunradio/
 
 ## 🌐 Exponer al público
 
-BunRadio corre en local por defecto. Para que otros puedan escuchar desde internet, necesitas un **tunnel**:
-
-### Opción 1: serveo (sin registro, sin límite)
+BunRadio corre en local por defecto. Para que otros puedan escuchar desde internet, usa **serveo**:
 
 ```bash
 # Instalar openssh (una sola vez)
 pkg install openssh -y
 
-# Exponer BunRadio
+# Exponer BunRadio (URL aleatoria)
 ssh -R 80:localhost:8080 serveo.net
+
+# O pedir una URL fija (primera vez autentica con Google/GitHub)
+ssh -R miusuario:80:localhost:8080 serveo.net
 ```
 
-Te da una URL tipo `https://xyz.serveo.net` que apunta a tu radio.
+Te da una URL tipo `https://xyz.serveo.net` (o `https://miusuario.serveo.net` si pediste una fija).
 
-### Opción 2: ngrok (con dashboard)
+**URL fija:** serveo asigna subdominios de forma determinística, así que generalmente te da la misma URL al reconectar. Si pides uno específico con `-R miusuario:80:...`, queda reservado para tu cuenta.
+
+**Para reconexión automática** (si se cae internet):
 
 ```bash
-# Instalar (una sola vez)
-pkg install wget unzip -y
-wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-arm64.tgz
-tar -xzf ngrok-v3-stable-linux-arm64.tgz
-
-# Configurar (cuenta gratis en ngrok.com)
-./ngrok authtoken TU_TOKEN
-
-# Exponer BunRadio
-./ngrok http 8080
+pkg install autossh -y
+autossh -M 0 -o "ServerAliveInterval 30" -o "ServerAliveCountMax 3" -R miusuario:80:localhost:8080 serveo.net
 ```
-
-Dashboard en `http://127.0.0.1:4040` para ver conexiones en tiempo real.
-
-### Opción 3: cloudflared (gratis, sin límite de tiempo)
-
-```bash
-pkg install cloudflared -y
-cloudflared tunnel --url http://localhost:8080
-```
-
-URL temporal que no expira, pero cambia al reiniciar.
-
-### Comparación
-
-| Servicio | Registro | Límite tiempo | URL | Dashboard |
-|----------|----------|---------------|-----|-----------|
-| **serveo** | No | Sin límite | Fija por sesión | No |
-| **ngrok** | Sí (gratis) | 2 horas (gratis) | Cambia en restart | Sí |
-| **cloudflared** | No | Sin límite | Temporal | No |
 
 ### Para una radio 24/7
 
