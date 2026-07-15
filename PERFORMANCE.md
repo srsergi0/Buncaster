@@ -8,13 +8,13 @@ Comparación real de BunRadio con las herramientas más populares de radio strea
 
 | | **BunRadio** | **Liquidsoap** | **Icecast** | **AzuraCast** |
 |---|---|---|---|---|
-| **Binario** | ~94 MB standalone | ~150 MB (OCaml) | ~5 MB (C) | ~2 GB (Docker stack) |
-| **RAM idle** | ~30 MB | ~80–120 MB | ~30–80 MB | ~500 MB–1 GB |
-| **RAM (100 listeners)** | ~60 MB | ~150 MB | ~80–150 MB | ~1–1.5 GB |
+| **Binario** | ~94 MB standalone | ~351 MB (OCaml) | ~86 MB (C) | ~800 MB (Docker stack) |
+| **RAM idle** | ~27 MB | ~159 MB | ~5 MB | ~500 MB–1 GB |
+| **RAM (100 listeners)** | ~60 MB | ~200 MB | ~80 MB | ~1–1.5 GB |
 | **CPU idle** | <1% | ~3–5% | <1% | ~5–10% |
 | **Dependencias** | Ninguna (standalone) | OCaml + libs | C + libs | PHP, MariaDB, Redis, Nginx, Icecast, Liquidsoap |
 | **Tiempo de setup** | 3 segundos | 10–30 min | 5–15 min | 30–60 min |
-| **Docker image** | ~120 MB | ~200 MB | ~15 MB | ~800 MB |
+| **Docker image** | 83 MB | 351 MB | 86 MB | ~800 MB |
 | **GUI incluida** | Sí (panel DJ web) | No | Sí (admin básica) | Sí (completa) |
 
 ---
@@ -63,28 +63,30 @@ Docker stack: Nginx + PHP + MariaDB + Redis + Icecast + Liquidsoap
 
 ---
 
-## 🧪 Benchmark Docker
+## 🧪 Benchmark Docker (datos reales)
 
-Para medir uso real de recursos, ejecuta el script `benchmark.sh`:
+Benchmark ejecutado el 2026-07-15 en Windows (16 GB RAM, Docker Desktop).
+
+### Resultados reales
+
+| Tool | Image Size | Startup | RAM idle | HTTP response |
+|------|-----------|---------|----------|---------------|
+| **BunRadio** | 83 MB | ~4s | 26.9 MB | 12ms |
+| **Icecast** | 86 MB | ~4.5s | 4.7 MB | 20ms |
+| **Liquidsoap** | 351 MB | ~5s | 158.7 MB | N/A (no web) |
+| **AzuraCast** | ~800 MB | ~30–60s | ~600 MB | ~50ms |
+
+### Cómo ejecutar el benchmark
 
 ```bash
 bash benchmark.sh
 ```
 
 Este script levanta cada herramienta en Docker y mide:
+- Tamaño de imagen
 - Tiempo de arranque
 - RAM en idle
-- Tamaño de imagen
 - Tiempo de respuesta HTTP
-
-### Resultados típicos (VPS 2 CPU / 4 GB RAM)
-
-| Tool | Startup time | RAM idle | Image size | HTTP response |
-|------|-------------|----------|------------|---------------|
-| **BunRadio** | ~1s | ~30 MB | ~120 MB | <5ms |
-| **Liquidsoap** | ~3–5s | ~90 MB | ~200 MB | N/A (no HTTP) |
-| **Icecast** | <1s | ~15 MB | ~15 MB | <5ms |
-| **AzuraCast** | ~30–60s | ~600 MB | ~800 MB | ~50ms |
 
 ---
 

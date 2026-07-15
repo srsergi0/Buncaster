@@ -100,12 +100,12 @@ measure "BunRadio" \
 
 # 2. Icecast
 measure "Icecast" \
-    "docker.io/intrahouse/icecast" \
+    "moul/icecast" \
     "8000"
 
 # 3. Liquidsoap (using radio-community image)
 measure "Liquidsoap" \
-    "docker.io/savonet/liquidsoap:v2.2.5" \
+    "savonet/liquidsoap:v2.2.5" \
     "8084" \
     "--entrypoint /bin/sh -c 'echo Done'"
 
