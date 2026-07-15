@@ -1,6 +1,6 @@
 # 🎙️ BunRadio
 
-**Tu radio en un solo binario. Sin Node, sin npm, sin Docker.**
+**Tu radio en un solo binario. Sin Node, sin npm.**
 
 Servidor de radio profesional built con **Bun** y **FFmpeg**. Acepta streaming en vivo desde OBS Studio via RTMP, genera una stream MP3 continua y gapless para oyentes, con sistema de fallback musical y panel de DJ web.
 
@@ -8,23 +8,18 @@ Servidor de radio profesional built con **Bun** y **FFmpeg**. Acepta streaming e
 
 ## ⚡ Empieza en 3 segundos
 
-### Opción 1: Binario standalone (recomendado)
+### Opción 1: Instalador automático (recomendado)
 
 ```bash
-# Linux/macOS
-chmod +x bunradio-linux-x64
-./bunradio-linux-x64
-
-# Windows
-.\bunradio-windows-x64.exe
+curl -fsSL https://raw.githubusercontent.com/srsergi0/Buncaster/main/install.sh | bash
+source ~/.bashrc
+bunradio
 ```
-
-**Eso es todo.** No necesitas Node, npm, Docker, ni configurar nada.
 
 ### Opción 2: Docker
 
 ```bash
-docker run -p 8080:8080 -p 1935:1935 -v ./musica:/app/musica bunradio:latest
+docker run -p 8080:8080 -p 1935:1935 -v ./musica:/app/musica ghcr.io/srsergi0/buncaster:latest
 ```
 
 ### Opción 3: Desde código fuente
@@ -36,37 +31,7 @@ bun run start
 
 ### Opción 4: Termux (Android)
 
-```bash
-# Instalar dependencias
-pkg install git curl ffmpeg
-
-# Instalar Bun parcheado para Termux
-curl -fsSL https://github.com/bd-loser/bun-termux/releases/latest/download/bun_1.3.14-patched_aarch64.deb -o $TMPDIR/bun.deb
-dpkg -i $TMPDIR/bun.deb
-chmod 755 $PREFIX/lib/bun-termux/bun
-hash -r
-
-# Clonar y ejecutar
-git clone --depth 1 https://github.com/srsergi0/Buncaster.git ~/bunradio
-cd ~/bunradio
-bun install
-bun run start
-```
-
-**O con el instalador automático:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/srsergi0/Buncaster/main/install.sh | bash
-source ~/.bashrc
-bunradio
-```
-
-**Notas para Termux:**
-- Puerto HTTP: **8080** (puerto estándar)
-- Puerto RTMP: **1935** (funciona sin root)
-- Host: **127.0.0.1** (Android bloquea 0.0.0.0)
-- Agrega música: `cp /sdcard/Download/*.mp3 ~/musica/`
-- OBS en Android: usa `rtmp://127.0.0.1:1935/live/TU_KEY`
+Ver [TERMUX.md](TERMUX.md) para instrucciones detalladas.
 
 ---
 
@@ -79,7 +44,7 @@ BunRadio funciona **sin configuración**. Ejecuta el binario y:
 | **Puerto HTTP** | 8080 (o el siguiente disponible) |
 | **Puerto RTMP** | 1935 (o el siguiente disponible) |
 | **Stream Key** | Se genera automáticamente (ej: `a1b2c3d4e5f6...`) |
-| **Música fallback** | Auto-detecta carpetas `musica/`, `music/`, `audio/`, `songs/` |
+| **Música fallback** | Directorio donde se ejecuta el binario |
 | **Procesamiento de audio** | Activado por defecto (limiter + compressor) |
 | **Crossfade** | 2 segundos entre canciones |
 | **Panel admin** | Sin contraseña (acceso abierto) |
@@ -111,7 +76,7 @@ Accede a `http://localhost:8080/admin` para controlar tu radio:
 
 ---
 
-## 📡 OBS Studio Configuration
+## 📡 OBS Studio
 
 1. Abre **OBS Studio**
 2. Ve a **Settings** → **Stream**
@@ -165,66 +130,6 @@ Docker incluye `HEALTHCHECK` automático cada 30 segundos.
 
 ---
 
-## 🔨 Build para todas las plataformas
-
-Compila binarios para Linux, Windows y macOS:
-
-```bash
-# Con Docker (cross-compile para todas las plataformas)
-bash build.sh
-
-# Solo para tu plataforma
-bun run build
-```
-
-### Output
-
-| Plataforma | Archivo | Tamaño |
-|------------|---------|--------|
-| Linux x64 | `bunradio-linux-x64` | ~87 MB |
-| Linux ARM64 | `bunradio-linux-arm64` | ~85 MB |
-| macOS Intel | `bunradio-macos-x64` | ~66 MB |
-| macOS Apple Silicon | `bunradio-macos-arm64` | ~61 MB |
-| Windows x64 | `bunradio-windows-x64.exe` | ~94 MB |
-
----
-
-## 🐳 Docker
-
-### Ejecutar
-
-```bash
-docker run -d \
-  --name bunradio \
-  -p 8080:8080 \
-  -p 1935:1935 \
-  -v ./musica:/app/musica \
-  --restart unless-stopped \
-  bunradio:latest
-```
-
-### Docker Compose
-
-```yaml
-services:
-  bunradio:
-    image: bunradio:latest
-    container_name: bunradio
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-      - "1935:1935"
-    volumes:
-      - ./musica:/app/musica
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-```
-
----
-
 ## 🤖 MCP Integration (AI Assistants)
 
 BunRadio incluye un servidor MCP para controlar la radio desde Claude Desktop, Cursor, o Windsurf.
@@ -250,66 +155,6 @@ BunRadio incluye un servidor MCP para controlar la radio desde Claude Desktop, C
 - `shuffle_playlist` - Re-shuffle
 - `toggle_fallback` - Pausar/reanudar
 - Y más...
-
----
-
-## 📁 Estructura del proyecto
-
-```
-bunradio/
-├── src/
-│   ├── index-rtmp.ts      # Entry point
-│   ├── config.ts           # Configuración (todo opcional)
-│   ├── audio-router.ts     # Motor de audio principal
-│   ├── broadcaster.ts      # Fan-out a oyentes
-│   ├── pre-buffer.ts       # Buffer para conexión instantánea
-│   ├── dsp.ts              # Cadena de procesamiento de audio
-│   ├── lame-ffi.ts         # Encoder MP3 nativo via FFI
-│   ├── http-server.ts      # Servidor HTTP + API
-│   ├── http-helpers.ts     # Utilidades + Panel DJ embebido
-│   ├── mcp-server.ts       # Servidor MCP para IA
-│   └── logger.ts           # Sistema de logging
-├── musica/                 # Carpeta de música fallback
-├── build.sh               # Script de build multi-plataforma
-├── install.sh             # Instalador automático
-├── Dockerfile             # Build multi-stage para Docker
-└── docker-compose.yml     # Configuración Docker Compose
-```
-
----
-
-## 🌐 Exponer al público
-
-BunRadio corre en local por defecto. Para que otros puedan escuchar desde internet, usa **serveo**:
-
-```bash
-# Instalar openssh (una sola vez)
-pkg install openssh -y
-
-# Exponer BunRadio (URL aleatoria)
-ssh -R 80:localhost:8080 serveo.net
-
-# O pedir una URL fija (primera vez autentica con Google/GitHub)
-ssh -R miusuario:80:localhost:8080 serveo.net
-```
-
-Te da una URL tipo `https://xyz.serveo.net` (o `https://miusuario.serveo.net` si pediste una fija).
-
-**URL fija:** serveo asigna subdominios de forma determinística, así que generalmente te da la misma URL al reconectar. Si pides uno específico con `-R miusuario:80:...`, queda reservado para tu cuenta.
-
-**Para reconexión automática** (si se cae internet):
-
-```bash
-pkg install autossh -y
-autossh -M 0 -o "ServerAliveInterval 30" -o "ServerAliveCountMax 3" -R miusuario:80:localhost:8080 serveo.net
-```
-
-### Para una radio 24/7
-
-Los tunnels son temporales. Para una radio permanente necesitas:
-
-- **VPS** (Hetzner, Oracle Free Tier, etc.) con nginx como reverse proxy
-- **Cloudflare Tunnel** con dominio propio (gratis, permanente)
 
 ---
 

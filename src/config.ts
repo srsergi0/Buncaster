@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -15,7 +13,7 @@ export interface Config {
   adminPassword?: string;
   logLevel: LogLevel;
   fallbackBitrateKbps: number;
-  fallbackSource?: string;
+  fallbackSource: string;
   audioProcessing: boolean;
   crossfadeSeconds: number;
   rtmpStreamKey: string;
@@ -52,18 +50,6 @@ function generateStreamKey(): string {
   return crypto.randomBytes(16).toString("hex");
 }
 
-function autoDetectMusicFolder(): string | undefined {
-  const candidates = ["musica", "music", "audio", "songs", "fallback"];
-  for (const name of candidates) {
-    const dir = path.resolve(process.cwd(), name);
-    if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
-      const files = fs.readdirSync(dir).filter((f) => /\.(mp3|flac|wav|m4a|aac|ogg)$/i.test(f));
-      if (files.length > 0) return dir;
-    }
-  }
-  return undefined;
-}
-
 function loadConfig(): Config {
   const rtmpKey = process.env.RTMP_STREAM_KEY || generateStreamKey();
   const httpPort = envInt("PORT", 8080);
@@ -85,7 +71,7 @@ function loadConfig(): Config {
     adminPassword: process.env.ADMIN_PASSWORD || undefined,
     logLevel: (process.env.LOG_LEVEL as LogLevel) || "info",
     fallbackBitrateKbps: envInt("STREAM_BITRATE_KBPS", 320),
-    fallbackSource: process.env.FALLBACK_SOURCE || autoDetectMusicFolder(),
+    fallbackSource: process.env.FALLBACK_SOURCE || process.cwd(),
     audioProcessing: envBool("AUDIO_PROCESSING", true),
     crossfadeSeconds: envInt("CROSSFADE_SECONDS", 2),
     rtmpStreamKey: rtmpKey,
