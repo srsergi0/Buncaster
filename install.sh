@@ -36,102 +36,112 @@ fi
 if [ "$IS_TERMUX" = true ]; then
     printf "  ${YELLOW}[TERMUX] Instalando desde codigo fuente...${NC}\n"
     echo ""
-    
-    # Verificar que git este instalado
-    if ! command -v git &> /dev/null; then
-        printf "  ${BOLD}Instalando git...${NC}\n"
-        pkg install git -y
-    fi
-    printf "  ${GREEN}[OK] git disponible${NC}\n"
-    
-    # Instalar Bun Android parcheado para Termux
-    if ! bun --version &>/dev/null 2>&1; then
+
+    # Dependencias basicas
+    for p in git curl dpkg binutils; do
+        if ! command -v "$p" &>/dev/null; then
+            pkg install "$p" -y
+        fi
+    done
+    printf "  ${GREEN}[OK] dependencias del sistema disponibles${NC}\n"
+
+    # Eliminar instalacion vieja de bun.sh que ensucia el PATH
+    rm -f "$HOME/.bun/bin/bun" "$HOME/.bun/bin/bunx" 2>/dev/null
+    hash -r 2>/dev/null
+
+    # Instalar Bun Android parcheado (bd-loser/bun-termux) via dpkg -i
+    if ! command -v bun &>/dev/null || ! bun --version &>/dev/null 2>&1; then
         printf "  ${BOLD}Instalando Bun (build Termux parcheado)...${NC}\n"
-        
-        # Eliminar instalaciones viejas
-        rm -rf "$HOME/.bun/bin/bun" "$HOME/.bun/bin/bunx" 2>/dev/null
-        
-        # Intentar pkg install primero
-        if pkg install bun -y 2>/dev/null && bun --version &>/dev/null 2>&1; then
-            printf "  ${GREEN}[OK] Bun instalado via pkg${NC}\n"
+
+        # Detectar arquitectura
+        ARCH=$(uname -m)
+        case "$ARCH" in
+            aarch64)  BUN_ARCH="aarch64" ;;
+            x86_64)   BUN_ARCH="x86_64"   ;;
+            *) printf "  ${RED}[ERROR] Arquitectura no soportada: %s${NC}\n" "$ARCH"; exit 1 ;;
+        esac
+
+        BUN_DEB_URL="https://github.com/bd-loser/bun-termux/releases/latest/download/bun_1.3.14-patched_${BUN_ARCH}.deb"
+        DEB_FILE="${TMPDIR:-$PREFIX/tmp}/bun-termux.deb"
+
+        printf "    Descargando %s...${NC}\n" "$BUN_ARCH"
+        if ! curl -fsSL "$BUN_DEB_URL" -o "$DEB_FILE"; then
+            printf "  ${RED}[ERROR] No se pudo descargar el .deb${NC}\n"
+            echo "  URL: $BUN_DEB_URL"
+            exit 1
+        fi
+
+        # dpkg -i instala el launcher (con LD_PRELOAD), el binario y el shim
+        if dpkg -i "$DEB_FILE" 2>&1 | tail -n 5; then
+            printf "  ${GREEN}[OK] .deb instalado via dpkg${NC}\n"
         else
-            # Descargar .deb y extraer manualmente
-            BUN_DEB="https://github.com/bd-loser/bun-termux/releases/latest/download/bun_1.3.14-patched_aarch64.deb"
-            TMPDIR_BUN="${TMPDIR:-/tmp}"
-            
-            rm -rf "$TMPDIR_BUN/bun-extract"
-            mkdir -p "$TMPDIR_BUN/bun-extract"
-            
-            curl -fsSL "$BUN_DEB" -o "$TMPDIR_BUN/bun.deb"
-            dpkg-deb -x "$TMPDIR_BUN/bun.deb" "$TMPDIR_BUN/bun-extract"
-            
-            # Verificar que el binario existe en el .deb
-            DEB_BIN="$TMPDIR_BUN/bun-extract/data/data/com.termux/files/usr/lib/bun-termux/bun"
-            if [ -f "$DEB_BIN" ]; then
-                # Copiar binario y launcher
-                mkdir -p "$PREFIX/lib/bun-termux"
-                cp "$DEB_BIN" "$PREFIX/lib/bun-termux/bun"
-                chmod +x "$PREFIX/lib/bun-termux/bun"
-                
-                # Copiar launcher
-                cp "$TMPDIR_BUN/bun-extract/data/data/com.termux/files/usr/bin/bun" "$PREFIX/bin/bun"
-                chmod +x "$PREFIX/bin/bun"
-                
-                # Copiar shim si existe
-                SHIM="$TMPDIR_BUN/bun-extract/data/data/com.termux/files/usr/lib/bun-termux/libbun-android-fix.so"
-                if [ -f "$SHIM" ]; then
-                    cp "$SHIM" "$PREFIX/lib/bun-termux/libbun-android-fix.so"
-                fi
-                
-                printf "  ${GREEN}[OK] Bun instalado manualmente${NC}\n"
-            else
-                printf "  ${RED}[ERROR] El .deb no contiene el binario esperado${NC}\n"
-                echo "  Intenta: pkg install bun"
-                exit 1
-            fi
-            
-            rm -rf "$TMPDIR_BUN/bun.deb" "$TMPDIR_BUN/bun-extract"
+            printf "  ${YELLOW}[WARN] dpkg -i fallo, intentando extraccion manual...${NC}\n"
+            # Fallback: extraccion manual preservando launcher y shim
+            EXTRACT_DIR="${TMPDIR:-$PREFIX/tmp}/bun-extract"
+            rm -rf "$EXTRACT_DIR"
+            mkdir -p "$EXTRACT_DIR"
+            dpkg-deb -x "$DEB_FILE" "$EXTRACT_DIR"
+            cp -r "$EXTRACT_DIR/data/data/com.termux/files/usr/." "$PREFIX/"
+            chmod +x "$PREFIX/bin/bun" "$PREFIX/bin/bunx" "$PREFIX/lib/bun-termux/bun" 2>/dev/null
+            rm -rf "$EXTRACT_DIR"
+        fi
+
+        rm -f "$DEB_FILE"
+        hash -r
+
+        # Fix de red (DNS) si esta disponible
+        if command -v bun-fix-network &>/dev/null; then
+            printf "  ${BOLD}Aplicando fix de red (DNS)...${NC}\n"
+            bun-fix-network >/dev/null 2>&1 || true
         fi
     fi
-    
+
     # Verificar que bun funcione
-    if ! bun --version &>/dev/null 2>&1; then
+    BUN_BIN=$(command -v bun 2>/dev/null)
+    if [ -z "$BUN_BIN" ] || ! "$BUN_BIN" --version &>/dev/null 2>&1; then
         printf "  ${RED}[ERROR] No se pudo instalar Bun.${NC}\n"
-        echo "  Intenta manualmente: pkg install bun"
+        echo "  Intenta manualmente:"
+        echo "    curl -fsSL https://github.com/bd-loser/bun-termux/releases/latest/download/bun_1.3.14-patched_aarch64.deb -o \$TMPDIR/bun.deb"
+        echo "    dpkg -i \$TMPDIR/bun.deb"
         exit 1
     fi
-    
-    printf "  ${GREEN}[OK] Bun disponible: %s${NC}\n" "$(bun --version)"
-    
+
+    BUN_VER=$("$BUN_BIN" --version 2>/dev/null | head -n1)
+    printf "  ${GREEN}[OK] Bun disponible: %s (%s)${NC}\n" "$BUN_VER" "$BUN_BIN"
+
     # Clonar repositorio
     REPO_DIR="$HOME/bunradio"
     if [ -d "$REPO_DIR" ]; then
         rm -rf "$REPO_DIR"
     fi
-    
+
     printf "  ${BOLD}Clonando repositorio...${NC}\n"
     git clone --depth 1 "https://github.com/${REPO}.git" "$REPO_DIR"
-    
+
     # Instalar dependencias
     printf "  ${BOLD}Instalando dependencias...${NC}\n"
-    cd "$REPO_DIR"
-    BUN_PATH=$(which bun)
-    "$BUN_PATH" install
-    
-    # Crear script launcher
+    cd "$REPO_DIR" || { printf "  ${RED}[ERROR] No se pudo entrar a %s${NC}\n" "$REPO_DIR"; exit 1; }
+    if ! "$BUN_BIN" install; then
+        printf "  ${RED}[ERROR] bun install fallo${NC}\n"
+        echo "  Intenta: bun-fix-network && bun install"
+        exit 1
+    fi
+    printf "  ${GREEN}[OK] Dependencias instaladas${NC}\n"
+
+    # Crear script launcher (usa BUN_BIN absoluto)
     mkdir -p "$INSTALL_DIR"
-    BUN_PATH=$(which bun)
-    echo '#!/bin/bash' > "$INSTALL_DIR/bunradio"
-    echo "cd ~/bunradio && \"$BUN_PATH\" run start" >> "$INSTALL_DIR/bunradio"
+    printf '#!/data/data/com.termux/files/usr/bin/bash\n' > "$INSTALL_DIR/bunradio"
+    printf 'export LD_PRELOAD="$PREFIX/lib/bun-termux/libbun-android-fix.so"\n' >> "$INSTALL_DIR/bunradio"
+    printf 'cd "$HOME/bunradio" && exec "%s" run start\n' "$BUN_BIN" >> "$INSTALL_DIR/bunradio"
     chmod +x "$INSTALL_DIR/bunradio"
-    
+
     # Agregar al PATH si no esta
     if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
         echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$HOME/.bashrc"
     fi
-    
+
     printf "  ${GREEN}[OK] Instalado en ${REPO_DIR}${NC}\n"
-    
+
     echo ""
     printf "${GREEN}  ============================================${NC}\n"
     printf "${GREEN}        INSTALADO CORRECTAMENTE (TERMUX)     ${NC}\n"
