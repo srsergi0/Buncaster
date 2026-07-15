@@ -44,11 +44,12 @@ if [ "$IS_TERMUX" = true ]; then
     fi
     printf "  ${GREEN}[OK] git disponible${NC}\n"
     
-    # Verificar que bun este instalado (el script oficial detecta Termux)
+    # Instalar Bun parcheado para Termux (bd-loser/bun-termux)
     if ! command -v bun &> /dev/null; then
-        printf "  ${BOLD}Instalando Bun (build Android oficial)...${NC}\n"
-        curl -fsSL https://bun.sh/install | bash
-        export PATH="$HOME/.bun/bin:$PATH"
+        printf "  ${BOLD}Instalando Bun (build Termux parcheado)...${NC}\n"
+        BUN_DEB_URL="https://github.com/bd-loser/bun-termux/releases/latest/download/bun_aarch64.deb"
+        curl -fsSL "$BUN_DEB_URL" -o "$TMPDIR/bun.deb" && \
+        dpkg -i "$TMPDIR/bun.deb" && rm "$TMPDIR/bun.deb"
     fi
     printf "  ${GREEN}[OK] Bun disponible: $(bun --version)${NC}\n"
     
