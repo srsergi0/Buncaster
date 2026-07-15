@@ -45,41 +45,37 @@ if [ "$IS_TERMUX" = true ]; then
     printf "  ${GREEN}[OK] git disponible${NC}\n"
     
     # Instalar Bun Android parcheado para Termux
-    BUN_BIN="$HOME/.bun/bin/bun"
-    if [ ! -f "$BUN_BIN" ] || ! "$BUN_BIN" --version &>/dev/null 2>&1; then
+    if ! command -v bun &> /dev/null || ! bun --version &>/dev/null 2>&1; then
         printf "  ${BOLD}Instalando Bun (build Termux parcheado)...${NC}\n"
-        mkdir -p "$HOME/.bun/bin"
         
-        # Metodo 1: intentar pkg install
-        if pkg install bun -y 2>/dev/null && command -v bun &> /dev/null; then
+        # Intentar pkg install primero
+        if pkg install bun -y 2>/dev/null && bun --version &>/dev/null 2>&1; then
             printf "  ${GREEN}[OK] Bun instalado via pkg${NC}\n"
         else
-            # Metodo 2: descargar .deb y extraer con dpkg-deb
+            # Descargar .deb y extraer toda la estructura
             BUN_DEB="https://github.com/bd-loser/bun-termux/releases/latest/download/bun_1.3.14-patched_aarch64.deb"
             TMPDIR_BUN="${TMPDIR:-/tmp}"
             
             curl -fsSL "$BUN_DEB" -o "$TMPDIR_BUN/bun.deb"
             mkdir -p "$TMPDIR_BUN/bun-extract"
             dpkg-deb -x "$TMPDIR_BUN/bun.deb" "$TMPDIR_BUN/bun-extract"
-            cp "$TMPDIR_BUN/bun-extract/data/data/com.termux/files/usr/bin/bun" "$BUN_BIN"
-            chmod +x "$BUN_BIN"
+            
+            # Copiar toda la estructura al sistema
+            cp -r "$TMPDIR_BUN/bun-extract/data/data/com.termux/files/usr/"* "$PREFIX/" 2>/dev/null || true
+            chmod +x "$PREFIX/bin/bun" 2>/dev/null || true
+            chmod +x "$PREFIX/lib/bun-termux/bun" 2>/dev/null || true
             rm -rf "$TMPDIR_BUN/bun.deb" "$TMPDIR_BUN/bun-extract"
         fi
     fi
     
     # Verificar que bun funcione
-    BUN_CMD="bun"
-    if [ ! -f "$BUN_BIN" ] || ! "$BUN_BIN" --version &>/dev/null 2>&1; then
-        if command -v bun &> /dev/null; then
-            BUN_CMD="bun"
-        else
-            printf "  ${RED}[ERROR] No se pudo instalar Bun.${NC}\n"
-            echo "  Intenta manualmente: pkg install bun"
-            exit 1
-        fi
+    if ! bun --version &>/dev/null 2>&1; then
+        printf "  ${RED}[ERROR] No se pudo instalar Bun.${NC}\n"
+        echo "  Intenta manualmente: pkg install bun"
+        exit 1
     fi
     
-    printf "  ${GREEN}[OK] Bun disponible: %s${NC}\n" "$("$BUN_CMD" --version 2>/dev/null || bun --version 2>/dev/null)"
+    printf "  ${GREEN}[OK] Bun disponible: %s${NC}\n" "$(bun --version)"
     
     # Clonar repositorio
     REPO_DIR="$HOME/bunradio"
@@ -97,10 +93,9 @@ if [ "$IS_TERMUX" = true ]; then
     
     # Crear script launcher
     mkdir -p "$INSTALL_DIR"
-    BUN_PATH=$(which bun 2>/dev/null || echo "$BUN_BIN")
-    cat > "$INSTALL_DIR/bunradio" << LAUNCHER
+    cat > "$INSTALL_DIR/bunradio" << 'LAUNCHER'
 #!/bin/bash
-cd ~/bunradio && "$BUN_PATH" run start
+cd ~/bunradio && bun run start
 LAUNCHER
     chmod +x "$INSTALL_DIR/bunradio"
     
