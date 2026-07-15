@@ -1,6 +1,7 @@
 import { state } from "./state";
 import { preBuffer } from "./pre-buffer";
 import { httpLog } from "./logger";
+import { chunkWithIcy } from "./icy-metadata";
 
 const MAX_SLOW_STRIKES = 5;
 
@@ -16,12 +17,25 @@ export function evictClient(id: string, reason: string): void {
   httpLog.info(`Oyente ${id} desconectado (${reason}). Activos: ${state.clients.size}`);
 }
 
+function getCurrentTitle(): string {
+  return state.currentTrack
+    ? `${state.currentTrack.artist} - ${state.currentTrack.title}`
+    : "";
+}
+
 export function broadcast(chunk: Uint8Array): void {
   preBuffer.push(chunk);
 
   for (const [id, client] of state.clients) {
     try {
-      client.controller.enqueue(chunk);
+      if (client.icy) {
+        const pieces = chunkWithIcy(chunk, client.icy, getCurrentTitle());
+        for (const piece of pieces) {
+          client.controller.enqueue(piece);
+        }
+      } else {
+        client.controller.enqueue(chunk);
+      }
     } catch (err) {
       evictClient(id, `fallo al enviar datos: ${(err as Error).message}`);
       continue;

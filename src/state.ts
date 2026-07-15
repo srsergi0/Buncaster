@@ -1,3 +1,5 @@
+import { type IcyClientState } from "./icy-metadata";
+
 export interface RadioClient {
   id: string;
   controller: ReadableStreamDefaultController<Uint8Array>;
@@ -6,6 +8,7 @@ export interface RadioClient {
   userAgent: string;
   bytesSent: number;
   slowStrikes: number;
+  icy?: IcyClientState;
 }
 
 export interface ActiveTrackInfo {

@@ -29,6 +29,7 @@ import {
 import { StreamableHttpTransport, InMemorySessionAdapter } from "mcp-lite";
 import { mcpServer } from "./mcp-server";
 import { FORMAT_CONFIG } from "./format-config";
+import { type IcyClientState, createIcyState } from "./icy-metadata";
 
 const mcpSessionAdapter = new InMemorySessionAdapter({ maxEventBufferSize: 100 });
 const mcpTransport = new StreamableHttpTransport({
@@ -81,6 +82,19 @@ export const httpServer = Bun.serve({
         ...corsHeaders(),
       };
 
+      const icyMetaRequested = req.headers.get("icy-metadata") === "1";
+      let icyState: IcyClientState | undefined;
+
+      if (icyMetaRequested) {
+        icyState = createIcyState();
+        streamHeaders["icy-metaint"] = String(icyState.metaInterval);
+        streamHeaders["icy-name"] = "BunRadio";
+        streamHeaders["icy-genre"] = "Various";
+        streamHeaders["icy-br"] = String(config.fallbackBitrateKbps);
+        streamHeaders["icy-url"] = "";
+        streamHeaders["icy-pub"] = "0";
+      }
+
       if (req.method === "HEAD") {
         return new Response(null, { headers: streamHeaders });
       }
@@ -108,6 +122,7 @@ export const httpServer = Bun.serve({
               userAgent,
               bytesSent: 0,
               slowStrikes: 0,
+              icy: icyState,
             });
             state.totalListenersServed++;
             httpLog.info(`Oyente conectado: ${clientId} desde ${ip} (${state.clients.size} activos)`);
