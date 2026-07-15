@@ -12,18 +12,25 @@ set -e
 REPO="srsergi0/Buncaster"
 INSTALL_DIR="${BUNRADIO_DIR:-$HOME/.bunradio}"
 
-# Colores ANSI usando $'' syntax para que printf los interprete
-RED=$'\033[0;31m'
-GREEN=$'\033[0;32m'
-YELLOW=$'\033[1;33m'
-CYAN=$'\033[0;36m'
-BOLD=$'\033[1m'
-NC=$'\033[0m'
+# Colores ANSI
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# Funcion para imprimir con colores usando printf
+pc() {
+    local color="$1"
+    shift
+    printf "${color}%s${NC}\n" "$@"
+}
 
 echo ""
-printf "${CYAN}  ============================================${NC}\n"
-printf "${CYAN}         B U N R A D I O   I N S T A L L     ${NC}\n"
-printf "${CYAN}  ============================================${NC}\n"
+pc "$CYAN" "  ============================================"
+pc "$CYAN" "         B U N R A D I O   I N S T A L L     "
+pc "$CYAN" "  ============================================"
 echo ""
 
 # Detectar SO, arquitectura y entorno
@@ -88,9 +95,9 @@ if [[ "$PLATFORM" == windows-* ]]; then
     DOWNLOAD_URL="${DOWNLOAD_URL}.exe"
 fi
 
-printf "  ${BOLD}Plataforma:${NC}  ${CYAN}${PLATFORM}${NC}\n"
-printf "  ${BOLD}Version:${NC}     ${CYAN}${VERSION}${NC}\n"
-printf "  ${BOLD}Instalar en:${NC} ${CYAN}${INSTALL_DIR}${NC}\n"
+printf "  ${BOLD}Plataforma:${NC}  ${CYAN}%s${NC}\n" "$PLATFORM"
+printf "  ${BOLD}Version:${NC}     ${CYAN}%s${NC}\n" "$VERSION"
+printf "  ${BOLD}Instalar en:${NC} ${CYAN}%s${NC}\n" "$INSTALL_DIR"
 echo ""
 
 # Verificar dependencias
@@ -110,7 +117,7 @@ SUDO=""
 if [[ "$INSTALL_DIR" == /usr/* ]] || [[ "$INSTALL_DIR" == /opt/* ]]; then
     if [ "$(id -u)" -ne 0 ]; then
         SUDO="sudo"
-        printf "  ${YELLOW}[INFO] Se usara sudo para instalar en ${INSTALL_DIR}${NC}\n"
+        printf "  ${YELLOW}[INFO] Se usara sudo para instalar en %s${NC}\n" "$INSTALL_DIR"
     fi
 fi
 
@@ -119,7 +126,7 @@ $SUDO mkdir -p "$INSTALL_DIR" 2>/dev/null || mkdir -p "$INSTALL_DIR"
 
 # Descargar binario
 echo ""
-printf "  ${BOLD}Descargando ${BINARY_NAME}...${NC}\n"
+printf "  ${BOLD}Descargando %s...${NC}\n" "$BINARY_NAME"
 
 if command -v curl &> /dev/null; then
     if curl -fsSL "$DOWNLOAD_URL" -o "$INSTALL_DIR/bunradio" 2>/dev/null; then
@@ -153,7 +160,7 @@ echo ""
 printf "  ${BOLD}Verificando binario...${NC}\n"
 BIN_SIZE=$(du -h "$INSTALL_DIR/bunradio" | cut -f1)
 if [ -f "$INSTALL_DIR/bunradio" ] && [ -s "$INSTALL_DIR/bunradio" ]; then
-    printf "  ${GREEN}[OK] Binario listo (${BIN_SIZE})${NC}\n"
+    printf "  ${GREEN}[OK] Binario listo (%s)${NC}\n" "$BIN_SIZE"
 else
     printf "  ${RED}[ERROR] El binario parece corrupto${NC}\n"
     exit 1
@@ -179,7 +186,7 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     if [[ -n "$SHELL_RC" ]]; then
         if ! grep -q "$INSTALL_DIR" "$SHELL_RC" 2>/dev/null; then
             echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$SHELL_RC"
-            printf "  ${GREEN}[OK] PATH actualizado en ${SHELL_RC}${NC}\n"
+            printf "  ${GREEN}[OK] PATH actualizado en %s${NC}\n" "$SHELL_RC"
             UPDATED_PATH=true
         else
             printf "  ${GREEN}[OK] PATH ya configurado${NC}\n"
@@ -198,11 +205,11 @@ printf "    ${CYAN}bunradio${NC}\n"
 echo ""
 echo "  O directamente:"
 echo ""
-printf "    ${CYAN}$INSTALL_DIR/bunradio${NC}\n"
+printf "    ${CYAN}%s/bunradio${NC}\n" "$INSTALL_DIR"
 echo ""
 if [ "$UPDATED_PATH" = true ]; then
     printf "  ${YELLOW}[IMPORTANTE] Reinicia tu terminal o ejecuta:${NC}\n"
-    printf "    ${CYAN}source ${SHELL_RC}${NC}\n"
+    printf "    ${CYAN}source %s${NC}\n" "$SHELL_RC"
     echo ""
 fi
 echo "  Para crear tu radio:"
