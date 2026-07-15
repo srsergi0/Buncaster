@@ -119,10 +119,8 @@ if [ "$IS_TERMUX" = true ]; then
     
     # Crear script launcher
     mkdir -p "$INSTALL_DIR"
-    cat > "$INSTALL_DIR/bunradio" << 'LAUNCHER'
-#!/bin/bash
-cd ~/bunradio && bun run start
-LAUNCHER
+    echo '#!/bin/bash' > "$INSTALL_DIR/bunradio"
+    echo 'cd ~/bunradio && bun run start' >> "$INSTALL_DIR/bunradio"
     chmod +x "$INSTALL_DIR/bunradio"
     
     # Agregar al PATH si no esta
