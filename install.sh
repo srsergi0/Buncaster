@@ -38,7 +38,7 @@ if [ "$IS_TERMUX" = true ]; then
     echo ""
 
     # Dependencias basicas
-    for p in git curl dpkg binutils; do
+    for p in git curl dpkg binutils ffmpeg; do
         if ! command -v "$p" &>/dev/null; then
             pkg install "$p" -y
         fi
