@@ -7,6 +7,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 export interface Config {
   httpPort: number;
   rtmpPort: number;
+  host: string;
   maxListeners: number;
   preBufferBytes: number;
   corsOrigin: string;
@@ -67,6 +68,8 @@ function loadConfig(): Config {
   const rtmpKey = process.env.RTMP_STREAM_KEY || generateStreamKey();
   const httpPort = envInt("PORT", 808);
   const rtmpPort = envInt("RTMP_PORT", findFreePort(1935, [httpPort]));
+  const isTermux = fs.existsSync("/data/data/com.termux");
+  const host = process.env.HOST || (isTermux ? "127.0.0.1" : "0.0.0.0");
 
   if (httpPort === rtmpPort) {
     throw new Error("PORT y RTMP_PORT no pueden ser el mismo puerto");
@@ -75,6 +78,7 @@ function loadConfig(): Config {
   const cfg: Config = {
     httpPort,
     rtmpPort,
+    host,
     maxListeners: envInt("MAX_LISTENERS", 500),
     preBufferBytes: envInt("PREBUFFER_BYTES", 65536),
     corsOrigin: process.env.CORS_ORIGIN || "*",

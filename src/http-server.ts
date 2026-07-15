@@ -39,6 +39,7 @@ function generateClientId(): string {
 }
 
 export const httpServer = Bun.serve({
+  hostname: config.host,
   port: config.httpPort,
   idleTimeout: 0,
 

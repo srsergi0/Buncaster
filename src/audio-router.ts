@@ -778,13 +778,13 @@ export async function runRtmpListener() {
       continue;
     }
 
-    rtmpLog.info(`Esperando conexión RTMP de OBS en rtmp://0.0.0.0:${config.rtmpPort}/live/${config.rtmpStreamKey}`);
+    rtmpLog.info(`Esperando conexión RTMP de OBS en rtmp://${config.host}:${config.rtmpPort}/live/${config.rtmpStreamKey}`);
 
     const args = [
       "-loglevel", "warning",
       "-fflags", "nobuffer",
       "-listen", "1",
-      "-i", `rtmp://0.0.0.0:${config.rtmpPort}/live/${config.rtmpStreamKey}`,
+      "-i", `rtmp://${config.host}:${config.rtmpPort}/live/${config.rtmpStreamKey}`,
       "-vn",
       "-f", "s16le",
       "-ar", "48000",
