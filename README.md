@@ -278,6 +278,65 @@ bunradio/
 
 ---
 
+## 🌐 Exponer al público
+
+BunRadio corre en local por defecto. Para que otros puedan escuchar desde internet, necesitas un **tunnel**:
+
+### Opción 1: serveo (sin registro, sin límite)
+
+```bash
+# Instalar openssh (una sola vez)
+pkg install openssh -y
+
+# Exponer BunRadio
+ssh -R 80:localhost:8080 serveo.net
+```
+
+Te da una URL tipo `https://xyz.serveo.net` que apunta a tu radio.
+
+### Opción 2: ngrok (con dashboard)
+
+```bash
+# Instalar (una sola vez)
+pkg install wget unzip -y
+wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-arm64.tgz
+tar -xzf ngrok-v3-stable-linux-arm64.tgz
+
+# Configurar (cuenta gratis en ngrok.com)
+./ngrok authtoken TU_TOKEN
+
+# Exponer BunRadio
+./ngrok http 8080
+```
+
+Dashboard en `http://127.0.0.1:4040` para ver conexiones en tiempo real.
+
+### Opción 3: cloudflared (gratis, sin límite de tiempo)
+
+```bash
+pkg install cloudflared -y
+cloudflared tunnel --url http://localhost:8080
+```
+
+URL temporal que no expira, pero cambia al reiniciar.
+
+### Comparación
+
+| Servicio | Registro | Límite tiempo | URL | Dashboard |
+|----------|----------|---------------|-----|-----------|
+| **serveo** | No | Sin límite | Fija por sesión | No |
+| **ngrok** | Sí (gratis) | 2 horas (gratis) | Cambia en restart | Sí |
+| **cloudflared** | No | Sin límite | Temporal | No |
+
+### Para una radio 24/7
+
+Los tunnels son temporales. Para una radio permanente necesitas:
+
+- **VPS** (Hetzner, Oracle Free Tier, etc.) con nginx como reverse proxy
+- **Cloudflare Tunnel** con dominio propio (gratis, permanente)
+
+---
+
 ## 📜 Licencia
 
 [MIT](LICENSE)
