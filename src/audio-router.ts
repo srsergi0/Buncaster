@@ -397,7 +397,46 @@ function initializeFallbackSource() {
 // =============================================================
 let playlistWatcher: fs.FSWatcher | null = null;
 let rescanDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pollingTimer: ReturnType<typeof setInterval> | null = null;
+let lastKnownFiles: string[] = [];
 const RESCAN_DEBOUNCE_MS = 500;
+const POLL_INTERVAL_MS = 5000;
+
+/**
+ * Compara la lista actual de archivos con la caché y dispara rescan si hay cambios.
+ */
+function pollForChanges() {
+  if (!config.fallbackSource || !isPlaylistInitialized) return;
+
+  try {
+    const stat = fs.statSync(config.fallbackSource);
+    if (!stat.isDirectory()) return;
+
+    const currentFiles = getAudioFilesRecursive(config.fallbackSource);
+    const prevFiles = lastKnownFiles;
+
+    if (prevFiles.length === 0) {
+      lastKnownFiles = currentFiles;
+      return;
+    }
+
+    // Comparación rápida por longitud y contenido
+    const sameLength = currentFiles.length === prevFiles.length;
+    const sameContent = sameLength && currentFiles.every((f, i) => f === prevFiles[i]);
+
+    if (!sameContent) {
+      lastKnownFiles = currentFiles;
+      // Debounce para evitar múltiples rescans si el watcher también detecta
+      if (rescanDebounceTimer) clearTimeout(rescanDebounceTimer);
+      rescanDebounceTimer = setTimeout(() => {
+        rescanPlaylist();
+        rescanDebounceTimer = null;
+      }, RESCAN_DEBOUNCE_MS);
+    }
+  } catch {
+    // Silenciar errores de polling
+  }
+}
 
 /**
  * Re-escanea la carpeta de fallback y reconstruye la playlist.
@@ -412,6 +451,8 @@ function rescanPlaylist() {
     if (!stat.isDirectory()) return;
 
     const newFiles = getAudioFilesRecursive(config.fallbackSource);
+    lastKnownFiles = newFiles; // Actualizar caché
+
     const oldFiles = new Set(fallbackPlaylist);
 
     // Detectar cambios
@@ -464,8 +505,9 @@ function rescanPlaylist() {
 
 /**
  * Inicia el file watcher en la carpeta de fallback.
- * Usa debounce para batchear cambios rápidos (copiar múltiples archivos, etc.)
- * Solo se llama una vez, se protege con playlistWatcher.
+ * Estrategia híbrida:
+ *  1. fs.watch() para cambios instantáneos (funciona en la mayoría de sistemas)
+ *  2. Polling cada 5s como safety net (necesario en Docker Windows→Linux)
  */
 function startPlaylistWatcher() {
   if (playlistWatcher || !config.fallbackSource) return;
@@ -474,38 +516,51 @@ function startPlaylistWatcher() {
     const stat = fs.statSync(config.fallbackSource);
     if (!stat.isDirectory()) return;
 
-    playlistWatcher = fs.watch(config.fallbackSource, { recursive: true }, (_event, filename) => {
-      if (!filename) return;
-      // Filtrar solo archivos de audio
-      if (!/\.(mp3|flac|wav|m4a|aac|ogg)$/i.test(filename)) return;
+    // Cachear archivos iniciales para el polling
+    lastKnownFiles = getAudioFilesRecursive(config.fallbackSource);
 
-      // Debounce: cancelar timer anterior y crear uno nuevo
-      if (rescanDebounceTimer) clearTimeout(rescanDebounceTimer);
-      rescanDebounceTimer = setTimeout(() => {
-        rescanPlaylist();
-        rescanDebounceTimer = null;
-      }, RESCAN_DEBOUNCE_MS);
-    });
+    // 1. fs.watch() — notificación instantánea
+    try {
+      playlistWatcher = fs.watch(config.fallbackSource, { recursive: true }, (_event, filename) => {
+        if (!filename) return;
+        if (!/\.(mp3|flac|wav|m4a|aac|ogg)$/i.test(filename)) return;
 
-    rtmpLog.info(`[Playlist Watch] Monitoreando carpeta de fallback: ${config.fallbackSource}`);
+        if (rescanDebounceTimer) clearTimeout(rescanDebounceTimer);
+        rescanDebounceTimer = setTimeout(() => {
+          rescanPlaylist();
+          rescanDebounceTimer = null;
+        }, RESCAN_DEBOUNCE_MS);
+      });
+      rtmpLog.info(`[Playlist Watch] fs.watch() activo en: ${config.fallbackSource}`);
+    } catch {
+      rtmpLog.warn("[Playlist Watch] fs.watch() no disponible, usando solo polling.");
+    }
+
+    // 2. Polling — safety net cada 5s (necesario en Docker/Windows)
+    pollingTimer = setInterval(pollForChanges, POLL_INTERVAL_MS);
+    rtmpLog.info(`[Playlist Watch] Polling activo cada ${POLL_INTERVAL_MS / 1000}s.`);
   } catch (err) {
     rtmpLog.warn(`[Playlist Watch] No se pudo monitorear la carpeta: ${(err as Error).message}`);
   }
 }
 
 /**
- * Detiene el file watcher (llamado en shutdown).
+ * Detiene el file watcher y el polling (llamado en shutdown).
  */
 export function stopPlaylistWatcher() {
   if (rescanDebounceTimer) {
     clearTimeout(rescanDebounceTimer);
     rescanDebounceTimer = null;
   }
+  if (pollingTimer) {
+    clearInterval(pollingTimer);
+    pollingTimer = null;
+  }
   if (playlistWatcher) {
     playlistWatcher.close();
     playlistWatcher = null;
-    rtmpLog.info("[Playlist Watch] Watcher detenido.");
   }
+  rtmpLog.info("[Playlist Watch] Watcher y polling detenidos.");
 }
 
 export function startMasterEncoder() {
