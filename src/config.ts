@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { type StreamFormat, validateFormat } from "./format-config";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -19,6 +20,7 @@ export interface Config {
   rtmpStreamKey: string;
   rtmpMinLiveSeconds: number;
   useNativeLame: "auto" | "true" | "false";
+  streamFormat: StreamFormat;
 }
 
 function envInt(name: string, fallback: number): number {
@@ -81,6 +83,7 @@ function loadConfig(): Config {
       if (v === "true" || v === "false") return v;
       return "auto";
     })(),
+    streamFormat: validateFormat((process.env.STREAM_FORMAT as StreamFormat) || "mp3"),
   };
 
   return cfg;

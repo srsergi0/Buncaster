@@ -28,6 +28,7 @@ import {
 
 import { StreamableHttpTransport, InMemorySessionAdapter } from "mcp-lite";
 import { mcpServer } from "./mcp-server";
+import { FORMAT_CONFIG } from "./format-config";
 
 const mcpSessionAdapter = new InMemorySessionAdapter({ maxEventBufferSize: 100 });
 const mcpTransport = new StreamableHttpTransport({
@@ -74,7 +75,7 @@ export const httpServer = Bun.serve({
       }
 
       const streamHeaders: Record<string, string> = {
-        "Content-Type": "audio/mpeg",
+        "Content-Type": FORMAT_CONFIG[config.streamFormat].mime,
         "Cache-Control": "no-cache, no-store",
         Connection: "keep-alive",
         ...corsHeaders(),

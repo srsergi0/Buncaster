@@ -60,6 +60,14 @@ export class BitrateDetector {
 
   feed(chunk: Uint8Array): void {
     if (this.done) return;
+
+    // Para formatos no-MP3, usar bitrate de config directamente
+    if (config.streamFormat !== "mp3") {
+      this.done = true;
+      this.onDetected({ bitrateKbps: config.fallbackBitrateKbps, sampleRate: 48000 });
+      return;
+    }
+
     this.acc = this.acc ? concatBytes(this.acc, chunk) : chunk;
 
     const info = findMp3FrameInfo(this.acc);

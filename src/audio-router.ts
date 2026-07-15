@@ -6,6 +6,7 @@ import { broadcast } from "./broadcaster";
 import { bitrateDetector } from "./bitrate-detector";
 import { LameEncoder, isNativeLameAvailable } from "./lame-ffi";
 import { DspChain } from "./dsp";
+import { FORMAT_CONFIG } from "./format-config";
 
 // =============================================================
 // 1. CLASE BUFFER FIFO DE AUDIO PCM
@@ -566,8 +567,8 @@ export function stopPlaylistWatcher() {
 export function startMasterEncoder() {
   if (state.masterProcess || nativeEncoder) return;
 
-  // --- Intentar modo nativo (LAME-FFI + DSP Bun) ---
-  if (config.useNativeLame !== "false" && isNativeLameAvailable()) {
+  // --- Intentar modo nativo (LAME-FFI + DSP Bun) solo para MP3 ---
+  if (config.streamFormat === "mp3" && config.useNativeLame !== "false" && isNativeLameAvailable()) {
     try {
       const encoder = new LameEncoder(
         48000,
@@ -594,7 +595,8 @@ export function startMasterEncoder() {
 }
 
 function startFfmpegMasterEncoder() {
-  rtmpLog.info(`Iniciando Codificador Maestro FFmpeg a ${config.fallbackBitrateKbps}kbps...`);
+  const fmt = FORMAT_CONFIG[config.streamFormat];
+  rtmpLog.info(`Iniciando Codificador Maestro FFmpeg [${config.streamFormat.toUpperCase()}] a ${config.fallbackBitrateKbps}kbps...`);
 
   const args = [
     "-loglevel", "warning",
@@ -606,10 +608,10 @@ function startFfmpegMasterEncoder() {
     ...(config.audioProcessing
       ? ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11,compand=attacks=0:decays=1:points=-90/-90|-20/-20|0/-10"]
       : []),
-    "-acodec", "libmp3lame",
-    "-ab", `${config.fallbackBitrateKbps}k`,
+    "-acodec", fmt.codec,
+    ...fmt.args(config.fallbackBitrateKbps),
     "-flush_packets", "1",
-    "-f", "mp3",
+    "-f", fmt.muxer,
     "-"
   ];
 

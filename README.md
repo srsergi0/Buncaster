@@ -49,6 +49,24 @@ BunRadio funciona **sin configuración**. Ejecuta el binario y:
 | **Crossfade** | 2 segundos entre canciones |
 | **Panel admin** | Requiere stream key (Bearer) o Basic Auth |
 
+### Formato de stream
+
+BunRadio soporta múltiples formatos de audio. Cambia con una sola variable:
+
+```bash
+STREAM_FORMAT=ogg    # OGG Vorbis
+STREAM_FORMAT=aac    # AAC
+STREAM_FORMAT=opus   # Opus (mejor codec moderno)
+STREAM_FORMAT=flac   # FLAC lossless
+STREAM_FORMAT=mp3    # MP3 (default, máxima compatibilidad)
+```
+
+Docker:
+```bash
+docker run -e STREAM_FORMAT=ogg -p 8080:8080 -p 1935:1935 \
+  -v ./musica:/app/musica ghcr.io/srsergi0/buncaster:latest
+```
+
 ### Configuración opcional
 
 Solo edita lo que quieras cambiar via variables de entorno o archivo `.env`:
