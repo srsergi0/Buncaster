@@ -12,20 +12,13 @@ set -e
 REPO="srsergi0/Buncaster"
 INSTALL_DIR="${BUNRADIO_DIR:-$HOME/.bunradio}"
 
-# Colores ANSI (funcionan en terminales modernas)
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-# Funcion para imprimir con colores
-print_color() {
-    local color=$1
-    local text=$2
-    printf "${color}${text}${NC}\n"
-}
+# Colores ANSI usando $'' syntax para que printf los interprete
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[1;33m'
+CYAN=$'\033[0;36m'
+BOLD=$'\033[1m'
+NC=$'\033[0m'
 
 echo ""
 printf "${CYAN}  ============================================${NC}\n"
