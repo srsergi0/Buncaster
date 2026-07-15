@@ -12,8 +12,8 @@ RUN apk add --no-cache ffmpeg
 WORKDIR /app
 COPY --from=builder /app/buncaster /app/buncaster
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:808/health || exit 1
-EXPOSE 808
+  CMD wget -qO- http://localhost:8080/health || exit 1
+EXPOSE 8080
 EXPOSE 1935
 ENV NODE_ENV=production
 CMD ["/app/buncaster"]

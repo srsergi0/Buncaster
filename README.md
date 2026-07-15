@@ -24,7 +24,7 @@ chmod +x bunradio-linux-x64
 ### Opción 2: Docker
 
 ```bash
-docker run -p 808:808 -p 1935:1935 -v ./musica:/app/musica bunradio:latest
+docker run -p 8080:8080 -p 1935:1935 -v ./musica:/app/musica bunradio:latest
 ```
 
 ### Opción 3: Desde código fuente
@@ -62,7 +62,7 @@ bunradio
 ```
 
 **Notas para Termux:**
-- Puerto HTTP: **8080** (no 808, requiere root en Android)
+- Puerto HTTP: **8080** (puerto estándar)
 - Puerto RTMP: **1935** (funciona sin root)
 - Host: **127.0.0.1** (Android bloquea 0.0.0.0)
 - Agrega música: `cp /sdcard/Download/*.mp3 ~/musica/`
@@ -76,7 +76,7 @@ BunRadio funciona **sin configuración**. Ejecuta el binario y:
 
 | Aspecto | Comportamiento automático |
 |---------|---------------------------|
-| **Puerto HTTP** | 808 (desktop) / 8080 (Termux, requiere root en Android para <1024) |
+| **Puerto HTTP** | 8080 (o el siguiente disponible) |
 | **Puerto RTMP** | 1935 (o el siguiente disponible) |
 | **Stream Key** | Se genera automáticamente (ej: `a1b2c3d4e5f6...`) |
 | **Música fallback** | Auto-detecta carpetas `musica/`, `music/`, `audio/`, `songs/` |
@@ -101,7 +101,7 @@ Ver `.env.example` para todas las opciones.
 
 ## 🖥️ Panel de DJ Web
 
-Accede a `http://localhost:808/admin` para controlar tu radio:
+Accede a `http://localhost:8080/admin` para controlar tu radio:
 
 - **Now Playing**: Info de la canción actual con barra de progreso
 - **Controles**: Saltar canción, pausar/reanudar fallback, re-shuffle
@@ -196,7 +196,7 @@ bun run build
 ```bash
 docker run -d \
   --name bunradio \
-  -p 808:808 \
+  -p 8080:8080 \
   -p 1935:1935 \
   -v ./musica:/app/musica \
   --restart unless-stopped \
@@ -212,7 +212,7 @@ services:
     container_name: bunradio
     restart: unless-stopped
     ports:
-      - "808:808"
+      - "8080:8080"
       - "1935:1935"
     volumes:
       - ./musica:/app/musica
@@ -235,7 +235,7 @@ BunRadio incluye un servidor MCP para controlar la radio desde Claude Desktop, C
 {
   "mcpServers": {
     "bunradio": {
-      "url": "http://localhost:808/mcp"
+      "url": "http://localhost:8080/mcp"
     }
   }
 }

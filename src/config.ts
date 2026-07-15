@@ -66,10 +66,9 @@ function autoDetectMusicFolder(): string | undefined {
 
 function loadConfig(): Config {
   const rtmpKey = process.env.RTMP_STREAM_KEY || generateStreamKey();
-  const isTermux = fs.existsSync("/data/data/com.termux");
-  const httpPort = envInt("PORT", isTermux ? 8080 : 808);
+  const httpPort = envInt("PORT", 8080);
   const rtmpPort = envInt("RTMP_PORT", findFreePort(1935, [httpPort]));
-  const host = process.env.HOST || (isTermux ? "127.0.0.1" : "0.0.0.0");
+  const host = process.env.HOST || "0.0.0.0";
 
   if (httpPort === rtmpPort) {
     throw new Error("PORT y RTMP_PORT no pueden ser el mismo puerto");

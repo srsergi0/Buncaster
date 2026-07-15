@@ -7,8 +7,8 @@ services:
     container_name: bunradio
     restart: unless-stopped
     ports:
-      # Expone el puerto HTTP mapeándolo dinámicamente con fallback a 808
-      - "${PORT:-808}:${PORT:-808}"
+      # Expone el puerto HTTP mapeándolo dinámicamente con fallback a 8080
+      - "${PORT:-8080}:${PORT:-8080}"
       # Expone el puerto RTMP para ingesta mapeándolo dinámicamente con fallback a 1935
       - "${RTMP_PORT:-1935}:${RTMP_PORT:-1935}"
     env_file:
