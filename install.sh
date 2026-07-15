@@ -20,17 +20,10 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# Funcion para imprimir con colores usando printf
-pc() {
-    local color="$1"
-    shift
-    printf "${color}%s${NC}\n" "$@"
-}
-
 echo ""
-pc "$CYAN" "  ============================================"
-pc "$CYAN" "         B U N R A D I O   I N S T A L L     "
-pc "$CYAN" "  ============================================"
+printf "${CYAN}  ============================================${NC}\n"
+printf "${CYAN}         B U N R A D I O   I N S T A L L     ${NC}\n"
+printf "${CYAN}  ============================================${NC}\n"
 echo ""
 
 # Detectar Termux
@@ -39,22 +32,27 @@ if [ -d "/data/data/com.termux" ] || [ "$TERMUX_VERSION" ]; then
     IS_TERMUX=true
 fi
 
-# En Termux, instalar desde codigo fuente
+# En Termux, instalar desde codigo fuente con Bun
 if [ "$IS_TERMUX" = true ]; then
-    echo ""
     printf "  ${YELLOW}[TERMUX] Instalando desde codigo fuente...${NC}\n"
     echo ""
     
-    # Verificar que bun este instalado
+    # Verificar que git este instalado
+    if ! command -v git &> /dev/null; then
+        printf "  ${BOLD}Instalando git...${NC}\n"
+        pkg install git -y
+    fi
+    printf "  ${GREEN}[OK] git disponible${NC}\n"
+    
+    # Verificar que bun este instalado (el script oficial detecta Termux)
     if ! command -v bun &> /dev/null; then
-        printf "  ${BOLD}Instalando Bun...${NC}\n"
+        printf "  ${BOLD}Instalando Bun (build Android oficial)...${NC}\n"
         curl -fsSL https://bun.sh/install | bash
         export PATH="$HOME/.bun/bin:$PATH"
-        source ~/.bashrc 2>/dev/null || true
     fi
-    printf "  ${GREEN}[OK] Bun disponible${NC}\n"
+    printf "  ${GREEN}[OK] Bun disponible: $(bun --version)${NC}\n"
     
-    # Clonar y instalar
+    # Clonar repositorio
     REPO_DIR="$HOME/bunradio"
     if [ -d "$REPO_DIR" ]; then
         rm -rf "$REPO_DIR"
@@ -63,16 +61,23 @@ if [ "$IS_TERMUX" = true ]; then
     printf "  ${BOLD}Clonando repositorio...${NC}\n"
     git clone --depth 1 "https://github.com/${REPO}.git" "$REPO_DIR"
     
+    # Instalar dependencias
     printf "  ${BOLD}Instalando dependencias...${NC}\n"
     cd "$REPO_DIR"
     bun install
     
     # Crear script launcher
+    mkdir -p "$INSTALL_DIR"
     cat > "$INSTALL_DIR/bunradio" << 'LAUNCHER'
 #!/bin/bash
 cd ~/bunradio && bun run start
 LAUNCHER
     chmod +x "$INSTALL_DIR/bunradio"
+    
+    # Agregar al PATH si no esta
+    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+        echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$HOME/.bashrc"
+    fi
     
     printf "  ${GREEN}[OK] Instalado en ${REPO_DIR}${NC}\n"
     
@@ -83,6 +88,7 @@ LAUNCHER
     echo ""
     echo "  Ejecuta tu radio con:"
     echo ""
+    printf "    ${CYAN}source ~/.bashrc${NC}\n"
     printf "    ${CYAN}bunradio${NC}\n"
     echo ""
     echo "  O directamente:"
@@ -103,16 +109,14 @@ LAUNCHER
     exit 0
 fi
 
-# Detectar SO, arquitectura y entorno
+# =============================================================
+# Linux, macOS, Windows (WSL/Git Bash)
+# =============================================================
+
+# Detectar SO y arquitectura
 detect_platform() {
     local os=$(uname -s | tr '[:upper:]' '[:lower:]')
     local arch=$(uname -m)
-    
-    # Detectar Termux (Android)
-    if [ -d "/data/data/com.termux" ] || [ "$TERMUX_VERSION" ]; then
-        echo "linux-arm64"
-        return
-    fi
     
     case "$os" in
         linux)
@@ -176,7 +180,6 @@ if ! command -v curl &> /dev/null && ! command -v wget &> /dev/null; then
     printf "  ${RED}[ERROR] Se requiere curl o wget${NC}\n"
     echo "  Instala curl:"
     echo "    - Ubuntu/Debian: sudo apt install curl"
-    echo "    - Termux: pkg install curl"
     echo "    - macOS: xcode-select --install"
     exit 1
 fi
