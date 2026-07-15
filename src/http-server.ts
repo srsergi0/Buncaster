@@ -128,7 +128,42 @@ export const httpServer = Bun.serve({
 
     // ---- Salud ----
     if (path === "/health") {
-      return Response.json({ status: "ok" }, { headers: corsHeaders() });
+      const uptimeSeconds = Math.floor((Date.now() - state.startTime.getTime()) / 1000);
+      const mem = process.memoryUsage();
+      const fallbackActive = !state.isBroadcasting && state.currentTrack !== null;
+      const masterAlive = state.masterProcess !== null;
+      const sourceAlive = state.sourceProcess !== null;
+
+      const health = {
+        status: "ok",
+        uptime: uptimeSeconds,
+        memory: {
+          rss: Math.round(mem.rss / 1024 / 1024),
+          heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+          heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+          external: Math.round(mem.external / 1024 / 1024),
+        },
+        processes: {
+          masterEncoder: masterAlive,
+          rtmpSource: sourceAlive,
+        },
+        broadcasting: state.isBroadcasting,
+        sourceConnected: state.sourceConnected,
+        fallback: {
+          active: fallbackActive,
+          paused: state.fallbackPaused,
+          currentTrack: state.currentTrack?.title || null,
+        },
+        listeners: state.clients.size,
+        maxListeners: config.maxListeners,
+        totalListenersServed: state.totalListenersServed,
+        totalBytesReceived: state.totalBytesReceived,
+        totalBytesSent: state.totalBytesSent,
+        detectedBitrateKbps: state.detectedBitrateKbps,
+        detectedSampleRate: state.detectedSampleRate,
+      };
+
+      return Response.json(health, { headers: corsHeaders() });
     }
 
     // ---- Estado Debug ----

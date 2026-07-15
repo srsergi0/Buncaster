@@ -11,6 +11,8 @@ FROM alpine:3.20
 RUN apk add --no-cache ffmpeg
 WORKDIR /app
 COPY --from=builder /app/buncaster /app/buncaster
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:4321/health || exit 1
 EXPOSE 4321
 EXPOSE 1935
 ENV NODE_ENV=production
