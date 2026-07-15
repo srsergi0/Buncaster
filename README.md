@@ -47,7 +47,7 @@ BunRadio funciona **sin configuración**. Ejecuta el binario y:
 | **Música fallback** | Directorio donde se ejecuta el binario |
 | **Procesamiento de audio** | Activado por defecto (limiter + compressor) |
 | **Crossfade** | 2 segundos entre canciones |
-| **Panel admin** | Sin contraseña (acceso abierto) |
+| **Panel admin** | Requiere stream key (Bearer) o Basic Auth |
 
 ### Configuración opcional
 
@@ -130,6 +130,28 @@ Docker incluye `HEALTHCHECK` automático cada 30 segundos.
 
 ---
 
+## 🔒 Seguridad
+
+El **stream key** (que aparece en la consola al iniciar) se usa como token de autenticación para las rutas protegidas. Pásalo como `Bearer` token:
+
+```bash
+# Ejemplo: skip con curl
+curl -X POST http://localhost:8080/admin/api/skip \
+  -H "Authorization: Bearer TU_STREAM_KEY"
+```
+
+| Ruta | Método | Protección |
+|------|--------|------------|
+| `/admin` | GET | Stream key (Bearer) o Basic Auth |
+| `/admin/api/*` | POST | Stream key (Bearer) o Basic Auth |
+| `/mcp` | POST | Stream key (Bearer) |
+| `/stream` | GET | Abierto |
+| `/health` | GET | Abierto |
+| `/status` | GET | Abierto |
+| `/metrics` | GET | Abierto |
+
+---
+
 ## 🤖 MCP Integration (AI Assistants)
 
 BunRadio incluye un servidor MCP para controlar la radio desde Claude Desktop, Cursor, o Windsurf.
@@ -140,7 +162,10 @@ BunRadio incluye un servidor MCP para controlar la radio desde Claude Desktop, C
 {
   "mcpServers": {
     "bunradio": {
-      "url": "http://localhost:8080/mcp"
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer TU_STREAM_KEY"
+      }
     }
   }
 }

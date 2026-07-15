@@ -28,8 +28,7 @@ function loadEnv() {
 loadEnv();
 
 const PORT = process.env.PORT || "4321";
-const ADMIN_USER = process.env.ADMIN_USER || "";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const STREAM_KEY = process.env.RTMP_STREAM_KEY || "";
 const API_URL = process.env.BUNRADIO_API_URL || `http://localhost:${PORT}`;
 
 /**
@@ -38,9 +37,14 @@ const API_URL = process.env.BUNRADIO_API_URL || `http://localhost:${PORT}`;
 async function callApi(endpoint: string, method: "GET" | "POST" = "GET", body?: any): Promise<any> {
   const headers: Record<string, string> = {};
 
-  if (ADMIN_USER || ADMIN_PASSWORD) {
-    const credentials = btoa(`${ADMIN_USER}:${ADMIN_PASSWORD}`);
-    headers["Authorization"] = `Basic ${credentials}`;
+  if (STREAM_KEY) {
+    headers["Authorization"] = `Bearer ${STREAM_KEY}`;
+  } else {
+    const ADMIN_USER = process.env.ADMIN_USER || "";
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+    if (ADMIN_USER || ADMIN_PASSWORD) {
+      headers["Authorization"] = `Basic ${btoa(`${ADMIN_USER}:${ADMIN_PASSWORD}`)}`;
+    }
   }
 
   if (body) {

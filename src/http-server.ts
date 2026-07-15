@@ -5,7 +5,8 @@ import { preBuffer } from "./pre-buffer";
 import { httpLog } from "./logger";
 import {
   corsHeaders,
-  checkBasicAuth,
+  checkAdminAuth,
+  checkStreamKey,
   unauthorized,
   getClientIp,
   getAdminHTML,
@@ -52,6 +53,7 @@ export const httpServer = Bun.serve({
     }
 
     if (path.startsWith("/mcp")) {
+      if (!checkStreamKey(req)) return unauthorized();
       const response = await handleMcpRequest(req);
       // Expose CORS headers on response
       const headers = new Headers(response.headers);
@@ -235,7 +237,7 @@ export const httpServer = Bun.serve({
 
     // ---- Panel admin ----
     if (path === "/admin") {
-      if (!checkBasicAuth(req)) return unauthorized();
+      if (!checkAdminAuth(req)) return unauthorized();
       return new Response(getAdminHTML(), {
         headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() },
       });
@@ -245,7 +247,7 @@ export const httpServer = Bun.serve({
     // API REST DE CONTROL EN CALIENTE (PROTEGIDO)
     // =============================================================
     if (path.startsWith("/admin/api/")) {
-      if (!checkBasicAuth(req)) return unauthorized();
+      if (!checkAdminAuth(req)) return unauthorized();
 
       // ---- SSE Events ----
       if (path === "/admin/api/events" && req.method === "GET") {

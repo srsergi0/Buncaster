@@ -1,0 +1,43 @@
+name: CI Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Linux x64
+        run: bun build --compile --target=bun-linux-x64-modern --outfile=dist/bunradio-linux-x64 src/index-rtmp.ts
+
+      - name: Build Linux ARM64
+        run: bun build --compile --target=bun-linux-arm64 --outfile=dist/bunradio-linux-arm64 src/index-rtmp.ts
+
+      - name: Build Windows x64
+        run: bun build --compile --target=bun-windows-x64-modern --outfile=dist/bunradio-windows-x64.exe src/index-rtmp.ts
+
+      - name: Build macOS Intel
+        run: bun build --compile --target=bun-darwin-x64 --outfile=dist/bunradio-macos-x64 src/index-rtmp.ts
+
+      - name: Build macOS Apple Silicon
+        run: bun build --compile --target=bun-darwin-arm64 --outfile=dist/bunradio-macos-arm64 src/index-rtmp.ts
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+          retention-days: 7

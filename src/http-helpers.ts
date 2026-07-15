@@ -22,10 +22,20 @@ export function checkBasicAuth(req: Request): boolean {
   }
 }
 
+export function checkStreamKey(req: Request): boolean {
+  const header = req.headers.get("authorization");
+  if (!header?.startsWith("Bearer ")) return false;
+  return header.slice(7) === config.rtmpStreamKey;
+}
+
+export function checkAdminAuth(req: Request): boolean {
+  return checkBasicAuth(req) || checkStreamKey(req);
+}
+
 export function unauthorized(): Response {
   return new Response("Unauthorized", {
     status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Admin"' },
+    headers: { "WWW-Authenticate": 'Basic realm="Admin", Bearer realm="BunRadio"' },
   });
 }
 
