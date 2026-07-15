@@ -96,13 +96,18 @@ if [ "$IS_TERMUX" = true ]; then
         fi
     fi
 
-    # Verificar que bun funcione
+    # Verificar que bun funcione — asegurar permisos de ejecucion
     BUN_BIN=$(command -v bun 2>/dev/null)
+    BUN_REAL="$PREFIX/lib/bun-termux/bun"
+    [ -f "$BUN_REAL" ] && chmod +x "$BUN_REAL" 2>/dev/null
+    [ -f "$PREFIX/lib/bun-termux/libbun-android-fix.so" ] && chmod +r "$PREFIX/lib/bun-termux/libbun-android-fix.so" 2>/dev/null
+
     if [ -z "$BUN_BIN" ] || ! "$BUN_BIN" --version &>/dev/null 2>&1; then
         printf "  ${RED}[ERROR] No se pudo instalar Bun.${NC}\n"
         echo "  Intenta manualmente:"
         echo "    curl -fsSL https://github.com/bd-loser/bun-termux/releases/latest/download/bun_1.3.14-patched_aarch64.deb -o \$TMPDIR/bun.deb"
         echo "    dpkg -i \$TMPDIR/bun.deb"
+        echo "    chmod +x \$PREFIX/lib/bun-termux/bun"
         exit 1
     fi
 
@@ -131,7 +136,6 @@ if [ "$IS_TERMUX" = true ]; then
     # Crear script launcher (usa BUN_BIN absoluto)
     mkdir -p "$INSTALL_DIR"
     printf '#!/data/data/com.termux/files/usr/bin/bash\n' > "$INSTALL_DIR/bunradio"
-    printf 'export LD_PRELOAD="$PREFIX/lib/bun-termux/libbun-android-fix.so"\n' >> "$INSTALL_DIR/bunradio"
     printf 'cd "$HOME/bunradio" && exec "%s" run start\n' "$BUN_BIN" >> "$INSTALL_DIR/bunradio"
     chmod +x "$INSTALL_DIR/bunradio"
 
