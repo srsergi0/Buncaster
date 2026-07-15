@@ -34,6 +34,40 @@ bun install
 bun run start
 ```
 
+### Opción 4: Termux (Android)
+
+```bash
+# Instalar dependencias
+pkg install git curl ffmpeg
+
+# Instalar Bun parcheado para Termux
+curl -fsSL https://github.com/bd-loser/bun-termux/releases/latest/download/bun_1.3.14-patched_aarch64.deb -o $TMPDIR/bun.deb
+dpkg -i $TMPDIR/bun.deb
+chmod 755 $PREFIX/lib/bun-termux/bun
+hash -r
+
+# Clonar y ejecutar
+git clone --depth 1 https://github.com/srsergi0/Buncaster.git ~/bunradio
+cd ~/bunradio
+bun install
+bun run start
+```
+
+**O con el instalador automático:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/srsergi0/Buncaster/main/install.sh | bash
+source ~/.bashrc
+bunradio
+```
+
+**Notas para Termux:**
+- Puerto HTTP: **8080** (no 808, requiere root en Android)
+- Puerto RTMP: **1935** (funciona sin root)
+- Host: **127.0.0.1** (Android bloquea 0.0.0.0)
+- Agrega música: `cp /sdcard/Download/*.mp3 ~/musica/`
+- OBS en Android: usa `rtmp://127.0.0.1:1935/live/TU_KEY`
+
 ---
 
 ## 🎯 Zero Config
@@ -42,7 +76,7 @@ BunRadio funciona **sin configuración**. Ejecuta el binario y:
 
 | Aspecto | Comportamiento automático |
 |---------|---------------------------|
-| **Puerto HTTP** | 808 (o el siguiente disponible) |
+| **Puerto HTTP** | 808 (desktop) / 8080 (Termux, requiere root en Android para <1024) |
 | **Puerto RTMP** | 1935 (o el siguiente disponible) |
 | **Stream Key** | Se genera automáticamente (ej: `a1b2c3d4e5f6...`) |
 | **Música fallback** | Auto-detecta carpetas `musica/`, `music/`, `audio/`, `songs/` |
