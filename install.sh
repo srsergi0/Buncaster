@@ -115,7 +115,7 @@ if [ "$IS_TERMUX" = true ]; then
     # Instalar dependencias
     printf "  ${BOLD}Instalando dependencias...${NC}\n"
     cd "$REPO_DIR"
-    "$BUN_BIN" install
+    bun install
     
     # Crear script launcher
     mkdir -p "$INSTALL_DIR"
