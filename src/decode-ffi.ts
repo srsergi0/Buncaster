@@ -57,8 +57,10 @@ interface Symbols {
   avcodec_receive_frame: (avctx: number, frame: number) => number;
   avcodec_free_context: (avctxOut: number) => void;
   av_packet_alloc: () => number;
+  av_packet_unref: (pkt: number) => void;
   av_packet_free: (pktOut: number) => void;
   av_frame_alloc: () => number;
+  av_frame_unref: (frame: number) => void;
   av_frame_free: (frameOut: number) => void;
   swr_alloc_set_opts: (s: number | null, outLayout: number, outFmt: number, outRate: number, inLayout: number, inFmt: number, inRate: number, logOff: number, logCtx: number | null) => number;
   swr_convert: (s: number, out: number, outCount: number, input: number, inCount: number) => number;
@@ -149,10 +151,12 @@ function loadLibs(): Symbols | null {
           avcodec_receive_frame: { args: ["ptr", "ptr"] as const, returns: "i32" as const },
           avcodec_free_context: { args: ["ptr"] as const, returns: "void" as const },
           av_packet_alloc: { args: [] as const, returns: "ptr" as const },
+          av_packet_unref: { args: ["ptr"] as const, returns: "void" as const },
           av_packet_free: { args: ["ptr"] as const, returns: "void" as const },
         };
         const defAvutil = {
           av_frame_alloc: { args: [] as const, returns: "ptr" as const },
+          av_frame_unref: { args: ["ptr"] as const, returns: "void" as const },
           av_frame_free: { args: ["ptr"] as const, returns: "void" as const },
         };
         const defSwr = {
@@ -317,6 +321,10 @@ export class NativeDecoder {
         }
         if (readI32(st.pkt, AVPACKET_STREAM_INDEX) !== st.streamIdx) continue;
         const sr = S.avcodec_send_packet(st.avctx, st.pkt);
+        // avcodec_send_packet NO libera el paquete: sin av_packet_unref,
+        // cada paquete (~192KB/s de audio comprimido) se fuga para siempre
+        // (~11MB/min de RSS). Mismo criterio con av_frame_unref tras swr.
+        S.av_packet_unref(st.pkt);
         if (sr < 0 && sr !== AVERROR_EAGAIN) return written;
         continue; // volver a recibir (si send fue EAGAIN, el receive drena la cola)
       }
@@ -327,6 +335,7 @@ export class NativeDecoder {
 
       writePtr(st.swrOutPtr, ptr(out) + written);
       const outCount = S.swr_convert(st.swr, ptr(st.swrOutPtr), 48000, st.frame, nbSamples);
+      S.av_frame_unref(st.frame); // liberar el búfer del frame decodificado
       if (outCount <= 0) continue;
       written += outCount * 4;
       if (written >= out.length) break; // margen lleno: cortar (no debería pasar)
