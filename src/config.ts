@@ -20,6 +20,7 @@ export interface Config {
   rtmpStreamKey: string;
   rtmpMinLiveSeconds: number;
   useNativeLame: "auto" | "true" | "false";
+  useNativeDecode: "auto" | "true" | "false";
   streamFormat: StreamFormat;
 }
 
@@ -80,6 +81,11 @@ function loadConfig(): Config {
     rtmpMinLiveSeconds: envInt("RTMP_MIN_LIVE_SECONDS", 10),
     useNativeLame: (() => {
       const v = process.env.USE_NATIVE_LAME;
+      if (v === "true" || v === "false") return v;
+      return "auto";
+    })(),
+    useNativeDecode: (() => {
+      const v = process.env.USE_NATIVE_DECODE;
       if (v === "true" || v === "false") return v;
       return "auto";
     })(),

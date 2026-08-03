@@ -5,6 +5,7 @@ import { state } from "./state";
 import { broadcast } from "./broadcaster";
 import { bitrateDetector } from "./bitrate-detector";
 import { LameEncoder, isNativeLameAvailable } from "./lame-ffi";
+import { NativeDecoder, isNativeDecodeAvailable } from "./decode-ffi";
 import { DspChain } from "./dsp";
 import { FORMAT_CONFIG } from "./format-config";
 
@@ -118,6 +119,7 @@ export let isStoppingFallback = false;
 // Encoder nativo (LAME-FFI + DSP Bun). Si está activo, reemplaza
 // el proceso master ffmpeg. Si es null, se usa el path ffmpeg.
 let nativeEncoder: { encoder: LameEncoder; dsp: DspChain | null } | null = null;
+let nativeDecodeAnnounced = false;
 
 function shuffle(array: string[]) {
   for (let i = array.length - 1; i > 0; i--) {
@@ -788,6 +790,27 @@ export function startFallback() {
   ];
 
   try {
+    // --- Modo nativo: decode in-process (libavcodec FFI), sin proceso ffmpeg ---
+    if (config.useNativeDecode !== "false" && isNativeDecodeAvailable()) {
+      try {
+        const decoder = new NativeDecoder(fileToPlay);
+        currentDeck.process = decoder as unknown as any;
+        // El tipo del reader nativo difiere del de Bun.spawn (node:stream/web
+        // vs bun); la interfaz runtime es idéntica ({read, cancel}).
+        const reader = decoder.stdout.getReader() as unknown as ReadableStreamDefaultReader<Uint8Array>;
+        pipeFallback(currentDeck, reader);
+        if (!nativeDecodeAnnounced) {
+          nativeDecodeAnnounced = true;
+          rtmpLog.info("[Deck] Decode nativo activo (libavcodec FFI). Decks sin proceso ffmpeg.");
+        }
+        return;
+      } catch (err) {
+        rtmpLog.warn(
+          `[Deck ${currentDeck.id}] Decode nativo falló para "${cleanName}", usando ffmpeg: ${(err as Error).message}`,
+        );
+      }
+    }
+
     currentDeck.process = Bun.spawn(["ffmpeg", ...args], {
       stdout: "pipe",
       stderr: "inherit",
