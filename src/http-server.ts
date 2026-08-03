@@ -3,6 +3,9 @@ import { config } from "./config";
 import { state } from "./state";
 import { preBuffer } from "./pre-buffer";
 import { httpLog } from "./logger";
+
+// Rutas que sirven el stream de audio (alias de estación)
+const STREAM_PATHS = new Set(["/stream", "/", "/radiobloom.mp3", "/radio.mp3", "/stream.mp3"]);
 import {
   corsHeaders,
   checkAdminAuth,
@@ -70,14 +73,18 @@ export const httpServer = Bun.serve({
     }
 
     // ---- Stream de audio ----
-    if ((path === "/stream" || path === "/") && (req.method === "GET" || req.method === "HEAD")) {
+    // Rutas: /stream, /, /radiobloom.mp3, /radio.mp3, /stream.mp3
+    // (alias de la estación; el player apunta a /radiobloom.mp3)
+    if (STREAM_PATHS.has(path) && (req.method === "GET" || req.method === "HEAD")) {
       if (state.clients.size >= config.maxListeners) {
         return new Response("Servidor al máximo de oyentes", { status: 503, headers: corsHeaders() });
       }
 
       const streamHeaders: Record<string, string> = {
         "Content-Type": FORMAT_CONFIG[config.streamFormat].mime,
-        "Cache-Control": "no-cache, no-store",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Content-Encoding": "identity",
+        "X-Accel-Buffering": "no",
         Connection: "keep-alive",
         ...corsHeaders(),
       };
@@ -134,7 +141,10 @@ export const httpServer = Bun.serve({
             broadcastSse("state-updated", { listeners: state.clients.size });
           },
         },
-        { highWaterMark: 256 * 1024 }
+        // El highWaterMark debe cubrir la ráfaga inicial del preBuffer:
+        // con PREBUFFER_BYTES=1.5MB, un hwm de 256KB provocaría
+        // desiredSize<0 en el primer broadcast y la expulsión del oyente.
+        { highWaterMark: config.preBufferBytes + 256 * 1024 }
       );
 
       req.signal.addEventListener("abort", () => {
