@@ -11,39 +11,57 @@ import { FORMAT_CONFIG } from "./format-config";
 // =============================================================
 // 1. CLASE BUFFER FIFO DE AUDIO PCM
 // =============================================================
+// Diseño "cero allocaciones": un deck secundario solo necesita la
+// ventana de crossfade de audio bufferizada (el resto de la canción se
+// descarta al llenarse el FIFO). Antes se bufferizaba la canción
+// completa (~46MB por tema a 192KB/s) y esa memoria quedaba retenida
+// hasta que el deck moría. pullInto() escribe en un buffer del pool PCM
+// (reutilizable) en vez de alocar uno nuevo por chunk.
+// 192KB/s = 48000Hz × 2ch × 2bytes.
+const DECK_BUFFER_CAP_BYTES = (config.crossfadeSeconds + 1) * 192_000;
+
 class AudioStreamBuffer {
   private queue: Uint8Array[] = [];
   private totalBytes = 0;
+  private readonly maxBytes: number;
 
-  push(chunk: Uint8Array) {
-    this.queue.push(chunk);
-    this.totalBytes += chunk.byteLength;
+  constructor(maxBytes = 0) {
+    this.maxBytes = maxBytes;
   }
 
-  pull(bytesNeeded: number): Uint8Array {
-    const out = new Uint8Array(bytesNeeded);
-    if (this.totalBytes === 0) {
-      return out; // Retornar silencio
+  push(chunk: Uint8Array) {
+    if (this.maxBytes > 0 && this.totalBytes >= this.maxBytes) return;
+    this.queue.push(chunk);
+    this.totalBytes += chunk.byteLength;
+    if (this.maxBytes > 0) {
+      while (this.totalBytes > this.maxBytes && this.queue.length > 1) {
+        const removed = this.queue.shift()!;
+        this.totalBytes -= removed.byteLength;
+      }
     }
+  }
 
+  // Copia del FIFO hacia `target` (un buffer del pool PCM, reutilizable).
+  // Devuelve los bytes escritos; el mezclador solo procesa esa región.
+  pullInto(target: Uint8Array): number {
     let bytesWritten = 0;
-    while (bytesWritten < bytesNeeded && this.queue.length > 0) {
+    while (bytesWritten < target.length && this.queue.length > 0) {
       const chunk = this.queue[0]!;
-      const remaining = bytesNeeded - bytesWritten;
+      const remaining = target.length - bytesWritten;
 
       if (chunk.byteLength <= remaining) {
-        out.set(chunk, bytesWritten);
+        target.set(chunk, bytesWritten);
         bytesWritten += chunk.byteLength;
         this.queue.shift();
         this.totalBytes -= chunk.byteLength;
       } else {
-        out.set(chunk.subarray(0, remaining), bytesWritten);
+        target.set(chunk.subarray(0, remaining), bytesWritten);
         this.queue[0] = chunk.subarray(remaining);
         this.totalBytes -= remaining;
         bytesWritten += remaining;
       }
     }
-    return out;
+    return bytesWritten;
   }
 
   clear() {
@@ -68,14 +86,14 @@ interface Deck {
 
 export const deckA: Deck = {
   id: "A",
-  buffer: new AudioStreamBuffer(),
+  buffer: new AudioStreamBuffer(DECK_BUFFER_CAP_BYTES),
   process: null,
   currentTrackFile: null,
 };
 
 export const deckB: Deck = {
   id: "B",
-  buffer: new AudioStreamBuffer(),
+  buffer: new AudioStreamBuffer(DECK_BUFFER_CAP_BYTES),
   process: null,
   currentTrackFile: null,
 };
@@ -113,7 +131,7 @@ function shuffle(array: string[]) {
 // =============================================================
 // 3. POOL DE BUFFERS PCM (evita allocations en hot path)
 // =============================================================
-// mixSamples y applyVolume son llamadas ~48 veces/segundo durante
+// mixWithBuffer y applyVolume son llamadas ~48 veces/segundo durante
 // crossfades/fades. Antes allocateaban un ArrayBuffer nuevo por
 // llamada, presionando el GC. Este pool rota N ArrayBuffers
 // pre-asignados al tamaño máximo visto. Después de writeToMaster()
@@ -181,51 +199,54 @@ function persistMetaCache() {
 // =============================================================
 // 5. MEZCLADORES MATEMÁTICOS DE PCM (TypedArrays)
 // =============================================================
-function mixSamples(chunkA: Uint8Array, volA: number, chunkB: Uint8Array, volB: number): Uint8Array {
+// Mezcla un chunk A (volA) con el FIFO de un deck (volB) escribiendo
+// DIRECTAMENTE en un buffer del pool PCM. Cero allocaciones en el hot
+// path: pullInto() escribe B sobre el buffer de salida y la mezcla es
+// in-place. Devuelve una vista del pool (válida hasta el siguiente
+// acquirePcmBuffer; writeToMaster la consume síncronamente).
+function mixWithBuffer(chunkA: Uint8Array, volA: number, source: AudioStreamBuffer, volB: number): Uint8Array {
+  const outBuffer = acquirePcmBuffer(chunkA.byteLength);
+  const out = new Uint8Array(outBuffer, 0, chunkA.byteLength);
+  const outSamples = new Int16Array(outBuffer, 0, chunkA.byteLength / 2);
+  const pulled = source.pullInto(out);
+
   const samplesA = new Int16Array(chunkA.buffer, chunkA.byteOffset, chunkA.byteLength / 2);
-  const samplesB = new Int16Array(chunkB.buffer, chunkB.byteOffset, chunkB.byteLength / 2);
-
-  const length = Math.max(samplesA.length, samplesB.length);
-  const byteLength = length * 2;
-  const outBuffer = acquirePcmBuffer(byteLength);
-  const outSamples = new Int16Array(outBuffer, 0, length);
-
-  // Recorrer la parte solapada sin chequeo de undefined (fast path)
-  const minLen = Math.min(samplesA.length, samplesB.length);
+  const minLen = Math.min(samplesA.length, pulled / 2);
   for (let i = 0; i < minLen; i++) {
-    let mixed = (samplesA[i]! * volA) + (samplesB[i]! * volB);
+    let mixed = (samplesA[i]! * volA) + (outSamples[i]! * volB);
     if (mixed > 32767) mixed = 32767;
     else if (mixed < -32768) mixed = -32768;
     outSamples[i] = mixed;
   }
-  // Cola del stream más largo (sin mezclar, solo volumen)
-  if (samplesA.length > minLen) {
-    for (let i = minLen; i < length; i++) {
-      outSamples[i] = samplesA[i]! * volA;
-    }
-  } else if (samplesB.length > minLen) {
-    for (let i = minLen; i < length; i++) {
-      outSamples[i] = samplesB[i]! * volB;
-    }
+  // Cola del stream A (sin mezclar, solo volumen)
+  for (let i = minLen; i < samplesA.length; i++) {
+    outSamples[i] = samplesA[i]! * volA;
   }
 
-  return new Uint8Array(outBuffer, 0, byteLength);
+  return out;
 }
 
+// Aplica volumen a un chunk escribiendo en un buffer del pool PCM
+// (cero allocaciones; antes alocaba un Uint8Array nuevo por chunk).
 function applyVolume(chunk: Uint8Array, volume: number): Uint8Array {
   if (volume === 1.0) return chunk;
-  if (volume === 0.0) return new Uint8Array(chunk.length);
 
   const byteLength = chunk.byteLength;
   const outBuffer = acquirePcmBuffer(byteLength);
+  const out = new Uint8Array(outBuffer, 0, byteLength);
   const outSamples = new Int16Array(outBuffer, 0, byteLength / 2);
-  const inSamples = new Int16Array(chunk.buffer, chunk.byteOffset, chunk.byteLength / 2);
 
+  if (volume === 0.0) {
+    outSamples.fill(0); // pool reutilizado: hay que poner ceros explícitos
+    return out;
+  }
+
+  const inSamples = new Int16Array(chunk.buffer, chunk.byteOffset, chunk.byteLength / 2);
   for (let i = 0; i < outSamples.length; i++) {
     const scaled = Math.round(inSamples[i]! * volume);
     outSamples[i] = Math.max(-32768, Math.min(32767, scaled));
   }
-  return new Uint8Array(outBuffer, 0, byteLength);
+  return out;
 }
 
 function writeToMaster(chunk: Uint8Array) {
@@ -753,6 +774,13 @@ export function startFallback() {
     "-re",
     "-i", fileToPlay,
     "-vn",
+    // Forzar chunks de salida GRANDES (1 por segundo, ~192KB):
+    // ffmpeg por defecto emite ~4.6KB cada 24ms → ~46 allocaciones
+    // pequeñas/s que quedan retenidas en los segmentos del allocator
+    // (la causa de la RSS creciente a 1.3GB). Con asetnsamples los
+    // chunks pasan a 192KB, que mimalloc asigna vía mmap y devuelve
+    // al OS al liberarlos.
+    "-af", "asetnsamples=n=48000",
     "-f", "s16le",
     "-ar", "48000",
     "-ac", "2",
@@ -813,8 +841,7 @@ async function pipeFallback(deck: Deck, reader: ReadableStreamDefaultReader<Uint
           const volIn = progress;
 
           const nextDeck = deck.id === "A" ? deckB : deckA;
-          const otherChunk = nextDeck.buffer.pull(value.length);
-          const mixed = mixSamples(value, volOut, otherChunk, volIn);
+          const mixed = mixWithBuffer(value, volOut, nextDeck.buffer, volIn);
 
           writeToMaster(mixed);
 
@@ -960,11 +987,17 @@ export async function runRtmpListener() {
       "-listen", "1",
       "-i", `rtmp://${config.host}:${config.rtmpPort}/live/${config.rtmpStreamKey}`,
       "-vn",
+      // Mismo motivo que en los decks: chunks grandes (1/s) en vez de
+      // ~46 allocaciones pequeñas/s retenidas por el allocator.
+      "-af", "asetnsamples=n=48000",
       "-f", "s16le",
       "-ar", "48000",
       "-ac", "2",
       "-"
     ];
+
+    // Watchdog de conexión silenciosa (visible en el finally de abajo)
+    let silentWatchdog: ReturnType<typeof setInterval> | null = null;
 
     try {
       state.sourceProcess = Bun.spawn(["ffmpeg", ...args], {
@@ -989,6 +1022,24 @@ export async function runRtmpListener() {
 
       // No pasar a "vivo" hasta recibir audio de forma sostenida. Esto filtra
       // conexiones breves/sondas que provocan cortes en el respaldo.
+      // Watchdog: si la conexión aceptada no envía audio, el ffmpeg -listen
+      // queda colgado indefinidamente (OBS conectado pero mudo/silencioso).
+      // Cada 120s sin nuevos bytes se mata el proceso; el cleanup y el bucle
+      // externo reintentan la escucha.
+      let lastAudioBytes = state.totalBytesReceived;
+      silentWatchdog = setInterval(() => {
+        if (state.sourceProcess !== processInstance) return;
+        if (state.totalBytesReceived === lastAudioBytes) {
+          rtmpLog.warn("[RTMP] Conexión sin audio durante 120s. Reiniciando receptor...");
+          try {
+            processInstance.kill();
+          } catch {
+            /* noop */
+          }
+        }
+        lastAudioBytes = state.totalBytesReceived;
+      }, 120_000);
+
       let firstAudioAt = 0;
       while (true) {
         const { done, value } = await reader.read();
@@ -1021,9 +1072,7 @@ export async function runRtmpListener() {
             const progress = Math.min(1.0, elapsed / (config.crossfadeSeconds * 1000));
 
             const currentMusicDeck = activeDeck === "A" ? deckA : deckB;
-            const fallbackChunk = currentMusicDeck.buffer.pull(value.length);
-
-            const mixed = mixSamples(value, progress, fallbackChunk, 1.0 - progress);
+            const mixed = mixWithBuffer(value, progress, currentMusicDeck.buffer, 1.0 - progress);
             writeToMaster(mixed);
 
             if (progress >= 1.0) {
@@ -1040,6 +1089,7 @@ export async function runRtmpListener() {
       rtmpLog.error("Error en proceso FFmpeg RTMP:", (err as Error).message);
     } finally {
       rtmpLog.info("Fuente RTMP desconectada. Limpiando...");
+      if (silentWatchdog) clearInterval(silentWatchdog);
       state.isBroadcasting = false;
       state.sourceConnected = false;
       state.detectedBitrateKbps = null;
