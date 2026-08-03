@@ -19,27 +19,19 @@ Radio por internet: ingesta RTMP (OBS) + transcodificación nativa (LAME-FFI + d
 
 ## Despliegue en producción
 
-El contenedor `buncaster` forma parte del stack de **bloom** (`/root/projects/bloom/docker-compose.yml`) y DEBE estar en la red docker `bloom_default` — el publisher de bloom (contenedor `bloom-publisher-1`, puerto 9876) consume `http://buncaster:4321/stream` por hostname docker.
+El contenedor `buncaster` **lo gestiona el docker-compose de bloom** (`/root/projects/bloom/docker-compose.yml`, servicio `buncaster`). NO crear el contenedor con `docker run`: la red `bloom_default` y el env se asignan solos por compose, y el publisher de bloom (contenedor `bloom-publisher-1`, puerto 9876) consume `http://buncaster:4321/stream` por hostname docker.
 
-**CRÍTICO: al recrear el contenedor, reconectar a la red de bloom:**
-
-```bash
-docker network connect bloom_default buncaster
-```
-
-Si el buncaster queda solo en `bridge`, el publisher no lo resuelve → su fallback sirve frames MP3 de silencio (el player avanza pero no se escucha nada). Log del publisher: `Upstream connection failed: Unable to connect`.
-
-Comando de recreación (igual que el de compose):
+**Para recrear tras un `docker pull`:**
 
 ```bash
-docker run -d --name buncaster --restart unless-stopped \
-  --env-file /tmp/opencode/prod-env.txt \
-  -p 4321:4321 -p 1935:1935 \
-  -v /root/projects/bloom/music/interludios:/app/music/interludios \
-  -v /root/projects/bloom/music/songs:/app/music/songs \
-  ghcr.io/srsergi0/buncaster:latest
-docker network connect bloom_default buncaster
+docker rm -f buncaster
+cd /root/projects/bloom && docker compose up -d buncaster
 ```
+
+El `.env` de bloom debe contener (clave para el arranque rápido y el decode nativo):
+`PREBUFFER_BYTES=1572864` y `USE_NATIVE_DECODE=auto` (además de PORT=4321, RTMP_PORT=1935, FALLBACK_SOURCE=music/songs).
+
+**Síntoma si el buncaster queda fuera de `bloom_default`:** el publisher no lo resuelve → su fallback sirve frames MP3 de silencio (el player avanza pero no se escucha nada). Log del publisher: `Upstream connection failed: Unable to connect`. Si pasa, reconectar a mano: `docker network connect bloom_default buncaster`.
 
 ## URL públicas
 
