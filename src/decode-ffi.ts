@@ -341,10 +341,15 @@ export class NativeDecoder {
     const t0 = performance.now();
 
     while (!this.cancelled) {
-      // Pacing real-time (equivalente a -re): 192 B/ms
+      // Pacing real-time (equivalente a -re): 192 B/ms, en slices de 50ms
+      // para que kill() responda en <50ms (antes esperaba hasta 1s el
+      // sleep completo, dejando un deck muerto escribiendo un chunk más).
       const targetMs = emittedBytes / 192;
-      const wait = targetMs - (performance.now() - t0);
-      if (wait > 0) await Bun.sleep(wait);
+      while (true) {
+        const wait = targetMs - (performance.now() - t0);
+        if (wait <= 0 || this.cancelled) break;
+        await Bun.sleep(Math.min(50, wait));
+      }
       if (this.cancelled) break;
       if (controller.desiredSize !== null && controller.desiredSize < -PCM_BYTES_PER_SECOND) {
         await Bun.sleep(100); // consumidor lento: backoff simple

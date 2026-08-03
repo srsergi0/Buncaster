@@ -920,7 +920,12 @@ async function pipeFallback(deck: Deck, reader: ReadableStreamDefaultReader<Uint
       rtmpLog.error(`Error leyendo flujo de Deck ${deck.id}:`, (err as Error).message);
     }
   } finally {
-    const wasIntentionallyStopped = deck.process === null;
+    // Race: si el slot `deck.process` ya fue reemplazado por OTRO proceso/
+    // decoder (p. ej. kill() no instantáneo del decode nativo + startFallback
+    // inmediato), este finally pertenece a un deck muerto y NO debe reiniciar
+    // nada — antes se comparaba con `=== null` y un decoder viejo que moría
+    // tras ser reemplazado cargaba una canción extra → dos canciones a la vez.
+    const wasIntentionallyStopped = deck.process !== processInstance;
     deck.process = null;
     deck.currentTrackFile = null;
     deck.buffer.clear();
@@ -1021,6 +1026,11 @@ export async function runRtmpListener() {
 
     // Watchdog de conexión silenciosa (visible en el finally de abajo)
     let silentWatchdog: ReturnType<typeof setInterval> | null = null;
+    // ¿Esta conexión RTMP llegó a entregar audio? Si nunca lo hizo (OBS
+    // conectado pero mudo), el finally NO debe tocar el fallback: reiniciar
+    // la música cada vez que el watchdog mata la conexión silenciosa
+    // provocaba cortes y mezclas de canciones cada 2 minutos.
+    let hadAudio = false;
 
     try {
       state.sourceProcess = Bun.spawn(["ffmpeg", ...args], {
@@ -1069,6 +1079,7 @@ export async function runRtmpListener() {
         if (done) break;
 
         if (value.byteLength > 0) {
+          hadAudio = true;
           state.totalBytesReceived += value.byteLength;
           if (firstAudioAt === 0) firstAudioAt = Date.now();
           const sustained = (Date.now() - firstAudioAt) >= config.rtmpMinLiveSeconds * 1000;
@@ -1140,7 +1151,7 @@ export async function runRtmpListener() {
         disconnectTimestamps = [];
       }
 
-      if (!state.shuttingDown) {
+      if (!state.shuttingDown && hadAudio) {
         stopFallback();
         // Iniciar rampa de volumen de subida para el fallback
         isFallbackFadeInActive = config.crossfadeSeconds > 0;
