@@ -47,7 +47,7 @@ BunRadio funciona **sin configuración**. Ejecuta el binario y:
 | **Puerto SRT** | 1936/udp (o el siguiente disponible) |
 | **Stream Key** | Se genera automáticamente (ej: `a1b2c3d4e5f6...`) |
 | **Música fallback** | Directorio donde se ejecuta el binario, o silencio si no hay audios / `FALLBACK_SOURCE=""` (live-only) |
-| **Procesamiento de audio** | Desactivado por defecto (`AUDIO_PROCESSING=false`, passthrough) |
+| **Procesamiento de audio** | Sin DSP (passthrough, sin normalización de volumen) |
 | **Crossfade** | 1s entre canciones, 0.2s al entrar vivo (low-latency) |
 | **Tier Opus** | `mp3 320k` + `opus 96k` (`/stream?format=opus`) |
 

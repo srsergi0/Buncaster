@@ -249,8 +249,7 @@ function applyVolume(chunk: Uint8Array, volume: number): Uint8Array {
 }
 
 function writeToMaster(chunk: Uint8Array) {
-  // Opus tier - siempre escribe PCM crudo (o procesado) al encoder opus si está habilitado
-  // Se hace primero para que opus tenga loudnorm vía ffmpeg -af si audioProcessing
+  // Opus tier - escribe el mismo PCM crudo al encoder opus si está habilitado
   if (config.opusTierEnabled && state.opusProcess?.stdin) {
     try {
       state.opusProcess.stdin.write(chunk);
@@ -623,9 +622,6 @@ function startFfmpegMasterEncoder() {
     "-ar", "48000",
     "-ac", "2",
     "-i", "pipe:0",
-    ...(config.audioProcessing
-      ? ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11,compand=attacks=0:decays=1:points=-90/-90|-20/-20|0/-10"]
-      : []),
     "-acodec", fmt.codec,
     ...fmt.args(config.fallbackBitrateKbps),
     "-flush_packets", "1",
@@ -686,7 +682,7 @@ export function startOpusEncoder() {
   // Verificar codec disponible
   const opusFmt = FORMAT_CONFIG["opus"];
   rtmpLog.info(`Starting Opus Tier Encoder [OPUS] at ${config.opusTierBitrateKbps}kbps ...`);
-  rtmpLog.debug(`[Opus Debug] source pcm 48k s16le stereo -> libopus ${config.opusTierBitrateKbps}k, audioProcessing=${config.audioProcessing}, fallbackBitrate=${config.fallbackBitrateKbps}k`);
+  rtmpLog.debug(`[Opus Debug] source pcm 48k s16le stereo -> libopus ${config.opusTierBitrateKbps}k, fallbackBitrate=${config.fallbackBitrateKbps}k`);
   const args = [
     "-loglevel", "warning",
     "-fflags", "nobuffer",
@@ -694,9 +690,6 @@ export function startOpusEncoder() {
     "-ar", "48000",
     "-ac", "2",
     "-i", "pipe:0",
-    ...(config.audioProcessing
-      ? ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11,compand=attacks=0:decays=1:points=-90/-90|-20/-20|0/-10"]
-      : []),
     "-acodec", opusFmt.codec,
     ...opusFmt.args(config.opusTierBitrateKbps),
     "-flush_packets", "1",
